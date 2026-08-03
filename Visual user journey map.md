@@ -1,43 +1,55 @@
 # Visual User journey
 
-We (the Initiator) have a contract that needs to be signed by **Alice (Level 1 - Manager)**, then **Bob (Level 2 - Legal)**, and finally **Charlie (Level 3 - Client)**.
+We (the Initiator) have a contract that needs to be signed by **You, the Initiator** or **Alice (Level 1 - Manager)**, then **Bob (Level 2 - Legal)**, and finally **Charlie (Level 3 - Client)**.
 
-### Step 1: The Setup (You, the Initiator)
+**Step 1: The Setup & Hierarchy Configuration (You, the Initiator)**
 
-1. **Upload:** You log into the dashboard and upload your PDF contract.
-2. **Assign the Hierarchy:** The system asks who needs to sign. You enter:
-* **Signer 1:** Alice (alice@company.com)
-* **Signer 2:** Bob (bob@company.com)
-* **Signer 3:** Charlie (charlie@client.com)
+* **Upload:** You log into the dashboard and upload your PDF document.
+* **Assign the Hierarchy & Decision Point:** The system asks who needs to sign. You are presented with a checkbox: **"[x] I am the first signer."**
+* *Condition A (Checked):* The system instantly auto-fills **Signer 1** with your active session data (Name and Email). You then enter:
+* Signer 2: Bob (bob@company.com)
+* Signer 3: Charlie (charlie@client.com)
+* *Condition B (Unchecked):* You manually enter: 
+* Signer 1: Alice (alice@company.com)
+* Signer 2: Bob (bob@company.com)
+* Signer 3: Charlie (charlie@client.com)
 
 
-3. **Place the Fields:** The PDF loads on your screen. You drag a "Signature" box and a "Date" box to the bottom of page. You assign one set of boxes to Alice, one to Bob, and one to Charlie.
-4. **Send:** You click "Start Workflow." The system status changes to **Pending**, and you can track this on your dashboard.
+* **Place the Fields:** The PDF loads on your screen via a web canvas. You drag the "Signature" and "Date" boxes to the appropriate locations, assigning the respective boxes to each defined signer.
+* **Execute:** You click "Start Workflow."
 
-### Step 2: The First Signature (Alice - Level 1)
+**Step 2: The First Signature (Conditional Branching)**
+The system routes the document based on the decision made in Step 1:
 
-1. **Notification:** Alice receives an email: *"You have a document to sign."* (Bob and Charlie hear nothing yet).
-2. **Authentication:** Alice clicks the link. To ensure it's really her, the system might ask her to enter a One-Time Password (OTP) sent to her phone.
-3. **Signing:** She reviews the document in her browser. She clicks her assigned signature box, types her name or draws her signature, and clicks "Finish."
-4. **The Background Magic:** Backend takes the PDF, injects Alice's signature visual, and immediately **cryptographically hashes** the document. It is now sealed.
+* **Path A: If You (Initiator) are Signer 1**
+* **The Redirect:** The system bypasses the "Pending" state and skips the email trigger. You are instantly redirected to the active signing canvas.
+* **Signing:** You reviews the document in your browser. Then clicks assigned signature box, types your name or draws your signature, and clicks "Finish."
 
-### Step 3: The Handoff (Bob - Level 2)
 
-1. **Automated Routing:** The moment Alice finishes, the system updates the database state to **In Progress** and automatically fires an email to Bob.
-2. **Verification:** Bob clicks his link. Before showing him the document, your system checks the cryptographic seal. If anyone (even a hacker) changed a single word in the PDF after Alice signed it, the system throws an error and halts the process.
-3. **Signing:** The document is clean, so Bob reviews it, sees Alice's signature is already there, and adds his own.
-4. **The Background Magic:** The system seals the document *again*, this time wrapping both Alice's and Bob's signatures into a new cryptographic hash.
+* **Path B: If a Third Party (e.g., Alice) is Signer 1**
+* **Notification:** The system status changes to **Pending**. Alice receives a secure email link:"You have a document to sign.". (Bob and Charlie hear nothing yet).
+* **Authentication:** Alice clicks the link. To ensure it's really her, the system might ask her to enter a One-Time Password (OTP) sent to her phone.
+* **Signing:** She reviews the document in her browser. She clicks her assigned signature box, types her name or draws her signature, and clicks "Finish."
 
-### Step 4: The Final Approval (Charlie - Level 3)
 
-1. **The Last Stop:** Charlie receives his email. He opens the document, sees both Alice and Bob have signed, and adds his final signature.
-2. **Closing the Loop:** Charlie clicks "Finish." The system applies the final cryptographic seal.
+* **The Background Magic (Applies to both paths):** The backend immediately processes the file, injecting the visual signature and applying the first cryptographic hash to lock the signer's identity and the document's contents.
 
-### Step 5: Completion & The Audit Trail
+**Step 3: The Handoff (Bob - Level 2)**
 
-1. **Distribution:** The system status updates to **Completed**. It automatically emails the final, sealed PDF to You, Alice, Bob, and Charlie.
-2. **The Certificate:** Appended to the very end of the PDF is a new page generated by your system—the **Audit Trail**. It looks something like this:
-* *Alice signed on Aug 3, 2026, 10:45 AM from IP 192.168.1.1 (Hash: a1b2c3...)*
+* **Automated Routing:** The database state instantly updates to **In Progress**. The system fires the automated email notification, sending a secure link to the next signer in the hierarchy (Bob).
+* **Verification:** Bob authenticates and clicks his link. Before displaying the file, the system automatically checks the cryptographic seal. If the file was altered after Signer 1's action, the system throws an error and halts.
+* **Signing:** The document is clean. Bob reviews it, sees the prior signature is already there, and adds his own.
+* **The Second Seal:** The system mathematically seals the document again, wrapping all prior signatures and Bob's into a new cryptographic hash.
+
+**Step 4: Final Approval (Charlie - Level 3)**
+
+* **The Last Stop:** Charlie (the final signer) receives his email notification. He securely views the document containing the prior signatures and applies his own.
+* **Closing the Loop:** Charlie clicks "Finish." The backend applies the final, master cryptographic seal to the document.
+
+**Step 5: Completion & The Audit Trail**
+
+* **Distribution:** The workflow state changes to **Completed**. The system automatically emails the final, sealed PDF to all participants (You/Alice, Bob, and Charlie).
+* **The Certificate:** Appended to the very end of the final PDF is a new page generated by your system—the Audit Trail. It logs the interactions:
+* *You/Alice signed on Aug 3, 2026, 10:45 AM from IP 192.168.1.1 (Hash: a1b2c3...)*
 * *Bob signed on Aug 3, 2026, 11:30 AM from IP 10.0.0.5 (Hash: x9y8z7...)*
 * *Charlie signed on Aug 4, 2026, 09:15 AM from IP 172.16.254.1 (Hash: q1w2e3...)*
-
