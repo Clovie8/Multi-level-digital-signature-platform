@@ -1,6 +1,6 @@
 # Visual User journey
 
-We (the Initiator) have a contract that needs to be signed by **You, the Initiator** or **Alice (Level 1 - Manager)**, then **Bob (Level 2 - Legal)**, and finally **Charlie (Level 3 - Client)**.
+We (the Initiator) have a document that needs to be signed by **You, the Initiator** or **Alice (Level 1 - Manager)**, then **Bob (Level 2 - Legal)**, and finally **Charlie (Level 3 - Client)**.
 
 **Step 1: The Setup & Hierarchy Configuration (You, the Initiator)**
 
