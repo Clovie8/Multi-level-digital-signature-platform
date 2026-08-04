@@ -7,8 +7,7 @@
 
 ### Entity Relationship Diagram (ERD)
 
-> **[ Insert Exported PostgreSQL ERD Diagram Here ]**
-> *(Note for Editor: Export the visual schema directly from pgAdmin, DBeaver, or DataGrip and embed the image above. The diagram should highlight the foreign key relationships cascading from `users` to `documents` to `workflow_steps` and `audit_logs`.)*
+![ERD](https://github.com/Clovie8/Multi-level-digital-signature-platform/blob/main/ERD%20Diagram.png)
 
 ---
 
