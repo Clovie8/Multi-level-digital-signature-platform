@@ -1,10 +1,10 @@
-# 🖋️ Multi-Level Digital Signature Platform - Backend API
+# Digital Signature Platform - Backend API
 
-Welcome to the backend repository of the Digital Signature Platform. This Node.js/Express application powers a highly secure, multi-tier document routing engine. It handles cloud-based PDF storage, strict sequential signing hierarchies, cryptographic hashing, physical PDF manipulation, and automated email handoffs.
+Backend repository of the Digital Signature Platform. This Node.js/Express application powers a highly secure, multi-tier document routing engine. It handles cloud-based PDF storage, strict sequential signing hierarchies, cryptographic hashing, physical PDF manipulation, and automated email handoffs.
 
 ---
 
-## 🏗️ The User Journey & Backend Implementation
+## The User Journey & Backend Implementation
 
 This backend was explicitly designed to support the following real-world signature lifecycle:
 
@@ -30,7 +30,7 @@ This backend was explicitly designed to support the following real-world signatu
 
 ---
 
-## 🧪 Testing Proofs & API Endpoints
+## Testing Proofs & API Endpoints
 
 Below is the documented proof of the backend lifecycle, tested end-to-end via Postman.
 
@@ -77,14 +77,13 @@ Below is the documented proof of the backend lifecycle, tested end-to-end via Po
 
 ---
 
-## 🚀 Local Setup & Installation
+## Local Setup & Installation
 
 ### 1. Environment Variables
 Create a `.env` file in the root directory:
 
 ```env
 PORT=5000
-FRONTEND_URL=http://localhost:5173
 
 # PostgreSQL
 DB_USER=postgres
@@ -111,7 +110,5 @@ SMTP_PASS=your_app_password
 
 ### 2. Run the Server
 ```bash
-npm install
-npm run dev
+npm nodemon src/server.js
 ```
-*The server will boot up on `http://localhost:5000`.*
