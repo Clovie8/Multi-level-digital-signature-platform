@@ -37,32 +37,44 @@ Below is the documented proof of the backend lifecycle, tested end-to-end via Po
 ### 1. User Authentication (JWT)
 * **Endpoint:** `POST /api/auth/register` & `POST /api/auth/login`
 * **Action:** Registers a new initiator and returns a secure JWT token for API access.
-> **[📸 PLACEHOLDER: Insert Postman screenshot of 200 OK Login with JWT Token here]**
+#### Register:
+![Register](https://github.com/Clovie8/Multi-level-digital-signature-platform/blob/main/backend/uploads/D%20Registration.png)
+#### Login:
+![Login](https://github.com/Clovie8/Multi-level-digital-signature-platform/blob/main/backend/uploads/D%20Login.png)
 
 ### 2. Cloudflare R2 Document Upload
 * **Endpoint:** `POST /api/documents/upload`
 * **Headers:** `Authorization: Bearer <JWT_TOKEN>`
 * **Action:** Accepts a `multipart/form-data` PDF, streams it to Cloudflare R2, and returns the newly created Document UUID.
-> **[📸 PLACEHOLDER: Insert Postman screenshot of 201 Created Document Upload response here]**
+#### Uploading Document:
+![Upload](https://github.com/Clovie8/Multi-level-digital-signature-platform/blob/main/backend/uploads/D%20Upload%20Document.png)
+#### Document in cloudflare R2:
+![Uploaded document](https://github.com/Clovie8/Multi-level-digital-signature-platform/blob/main/backend/uploads/D%20R2%20Files.png)
 
 ### 3. Workflow Creation & Routing Engine
 * **Endpoint:** `POST /api/workflows/create`
 * **Headers:** `Authorization: Bearer <JWT_TOKEN>`
 * **Action:** Inserts sequential steps into the database. Demonstrates the "Me First" bypass by returning a `redirectToken` for the initiator, while holding Level 2 and 3 in `pending` status.
-> **[📸 PLACEHOLDER: Insert Postman screenshot of Workflow Creation response showing the steps array and redirectToken here]**
+![Workflow](https://github.com/Clovie8/Multi-level-digital-signature-platform/blob/main/backend/uploads/D%20Creat%20Workflow.png)
 
 ### 4. Signature Submission & Cryptographic Hashing
 * **Endpoint:** `POST /api/signatures/submit`
 * **Action:** The core engine. Verifies the signer's token, generates the SHA-256 hash, and logs the IP address.
-> **[📸 PLACEHOLDER: Insert Postman screenshot of 200 OK Signature Submit showing the generated hash here]**
+#### Level 2 sign and status is In Process:
+![Signature in progress](https://github.com/Clovie8/Multi-level-digital-signature-platform/blob/main/backend/uploads/D%20sign%20In%20process.png)
+#### Last person sign and status change to complete:
+![Signature on compelation](https://github.com/Clovie8/Multi-level-digital-signature-platform/blob/main/backend/uploads/D%20Sign%20complete.png)
 
 ### 5. Physical PDF Stamping
-* **Proof:** The `pdfManager.js` utility successfully pulls the file from R2, applies the visual signature block, and saves it. 
-> **[📸 PLACEHOLDER: Insert Screenshot of the actual downloaded PDF showing the dark blue text block with Name, Date, and Hash stamped on the page here]**
+* **Proof:** The `pdfManager.js` utility successfully pulls the file from R2, applies the visual signature block, and saves it. (Note: We used name and date because we were testing only Backend api in Postman)
+#### Original Document: 
+![Document before Sign](https://github.com/Clovie8/Multi-level-digital-signature-platform/blob/main/backend/uploads/D%20Document%20before%20sign.png)
+#### Signed Document:
+![Document after Sign](https://github.com/Clovie8/Multi-level-digital-signature-platform/blob/main/backend/uploads/D%20Document%20after%20sign.png)
 
 ### 6. Automated Email Notification
 * **Proof:** The `emailManager.js` successfully dispatches HTML-formatted emails containing the secure `access_token` link for the next signer in the queue.
-> **[📸 PLACEHOLDER: Insert Screenshot of the received Email (in Inbox or Spam) showing the "Review and Sign Document" button here]**
+![email](https://github.com/Clovie8/Multi-level-digital-signature-platform/blob/main/backend/uploads/D%20Email.png)
 
 ---
 
@@ -110,5 +122,5 @@ SMTP_PASS=your_app_password
 
 ### 2. Run the Server
 ```bash
-npm nodemon src/server.js
+npx nodemon src/server.js
 ```
