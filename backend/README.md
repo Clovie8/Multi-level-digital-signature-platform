@@ -17,7 +17,7 @@ This backend was explicitly designed to support the following real-world signatu
 ### Step 2: The First Signature
 * Handled by `POST /api/signatures/submit`. The backend verifies the `access_token`. 
 * **The Background Magic:** The system pulls the PDF from Cloudflare R2 into memory, uses `pdf-lib` to physically draw the visual signature (Name, Date, Hash) at the assigned X/Y coordinates, and overwrites the file in the cloud bucket.
-* A cryptographic SHA-256 hash is generated using the document ID, signer email, and timestamp.
+* A cryptographic SHA-256 hash is generated using the document ID, signer email address, and timestamp.
 
 ### Step 3 & Step 4: The Handoff & Final Approval (Levels 2 & 3)
 * The database engine automatically queries the `workflow_steps` table for `step_order + 1`. 
