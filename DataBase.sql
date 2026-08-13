@@ -45,6 +45,8 @@ CREATE TABLE workflow_steps (
     signed_at TIMESTAMP WITH TIME ZONE,
     signer_ip VARCHAR(45),
     step_hash TEXT, -- The cryptographic hash generated right after THIS step
+    otp_code VARCHAR(10),
+    otp_expires_at TIMESTAMP WITH TIME ZONE,
     UNIQUE (document_id, step_order)
 );
 
