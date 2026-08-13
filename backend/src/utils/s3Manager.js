@@ -1,4 +1,5 @@
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const crypto = require('crypto');
 require('dotenv').config();
 
@@ -34,4 +35,46 @@ const uploadToR2 = async (fileBuffer, originalName) => {
     }
 };
 
-module.exports = { uploadToR2 };
+const getPresignedPdfUrl = async (fileKey) => {
+    try {
+        const command = new GetObjectCommand({
+            Bucket: process.env.R2_BUCKET_NAME,
+            Key: fileKey,
+        });
+        
+        // This URL will securely expire after 1 hour (3600 seconds)
+        const signedUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
+        return signedUrl;
+    } catch (error) {
+        console.error('Error generating pre-signed URL:', error);
+        throw new Error('Could not generate secure document link');
+    }
+};
+
+const getFileBufferFromR2 = async (fileKey) => {
+    const command = new GetObjectCommand({
+        Bucket: process.env.R2_BUCKET_NAME,
+        Key: fileKey,
+    });
+    const response = await s3.send(command);
+    // Convert the readable stream into a Node Buffer
+    const byteArray = await response.Body.transformToByteArray();
+    return Buffer.from(byteArray);
+};
+
+const uploadBufferToR2 = async (buffer, originalName, mimeType = 'application/pdf') => {
+    const uniqueSuffix = crypto.randomBytes(16).toString('hex');
+    const fileKey = `documents/signed-${uniqueSuffix}-${originalName}`;
+
+    const command = new PutObjectCommand({
+        Bucket: process.env.R2_BUCKET_NAME,
+        Key: fileKey,
+        Body: buffer,
+        ContentType: mimeType,
+    });
+
+    await s3.send(command);
+    return fileKey;
+};
+
+module.exports = { uploadToR2, getPresignedPdfUrl, getFileBufferFromR2, uploadBufferToR2 };

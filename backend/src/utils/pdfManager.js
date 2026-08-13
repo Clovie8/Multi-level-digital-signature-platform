@@ -12,68 +12,129 @@ const s3 = new S3Client({
     },
 });
 
-const applySignatureToPDF = async (fileKey, signerName, uiData, stepHash) => {
+const stampDocument = async (pdfBuffer, fields, completedValues) => {
     try {
-        // Fetch the original PDF file from Cloudflare R2
-        const getCommand = new GetObjectCommand({
-            Bucket: process.env.R2_BUCKET_NAME,
-            Key: fileKey,
-        });
-
-        const r2Response = await s3.send(getCommand);
-        
-        // Convert the R2 response stream into a Buffer for pdf-lib
-        const pdfBytesArray = await r2Response.Body.transformToByteArray();
-        const existingPdfBytes = Buffer.from(pdfBytesArray);
-
-        // Load the PDF bytes into pdf-lib
-        const pdfDoc = await PDFDocument.load(existingPdfBytes);
+        const pdfDoc = await PDFDocument.load(pdfBuffer);
         const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const cursiveFont = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
+        const pages = pdfDoc.getPages();
 
-        // Handle target page and placement coordinates
-        const targetPageNumber = uiData?.page ? uiData.page - 1 : 0;
-        const page = pdfDoc.getPages()[targetPageNumber];
-        const { height } = page.getSize();
+        for (const field of fields) {
+            const pageIndex = field.page ? field.page - 1 : 0; 
+            if (pageIndex < 0 || pageIndex >= pages.length) continue;
+            
+            const page = pages[pageIndex];
+            const { width, height } = page.getSize();
+            const value = completedValues[field.id];
+            if (!value) continue;
 
-        const targetX = uiData?.x || 50;
-        // Invert Y coordinate (Web top-left to PDF bottom-left origin)
-        const targetY = uiData?.y ? height - uiData.y : 100;
+            const targetX = (field.xPct / 100) * width;
+            const targetY = height - ((field.yPct / 100) * height);
 
-        // Format signature text block
-        const signatureText = [
-            `Digitally Signed by: ${signerName}`,
-            `Date: ${new Date().toLocaleString()}`,
-            `Hash: ${stepHash.substring(0, 16)}...`
-        ].join('\n');
+            // Convert CSS width/height (based on 750px wide frontend canvas) to PDF points
+            const pdfFieldWidth = field.width ? (field.width / 750) * width : undefined;
+            // Frontend aspect ratio is roughly 8.5x11, so 750px width = ~970px height
+            const pdfFieldHeight = field.height ? (field.height / 970) * height : undefined;
 
-        // Stamp signature on target page
-        page.drawText(signatureText, {
-            x: targetX,
-            y: targetY,
-            size: 10,
-            font: font,
-            color: rgb(0, 0.2, 0.6),
-            lineHeight: 14,
-        });
+            // Check if the frontend sent a drawn PNG image
+            if (value.startsWith('data:image/png;base64,')) {
+                // Embed the PNG into the PDF
+                const pngImage = await pdfDoc.embedPng(value);
+                
+                // If we have custom resized dimensions, use them. Otherwise default scale.
+                const drawWidth = pdfFieldWidth || (pngImage.width * 0.3);
+                const drawHeight = pdfFieldHeight || (pngImage.height * 0.3);
 
-        // Save modified PDF bytes
-        const modifiedPdfBytes = await pdfDoc.save();
+                page.drawImage(pngImage, {
+                    x: targetX,
+                    y: targetY - (drawHeight / 2),
+                    width: drawWidth,
+                    height: drawHeight,
+                });
+            } else {
+                // It is typed text (either plain or prefixed with 'TYPED::')
+                const textToStamp = value.replace('TYPED::', '');
+                const isSignature = field.type === 'Signature' || field.type === 'Initial';
 
-        // Upload/Overwrite the updated PDF back onto Cloudflare R2
-        const putCommand = new PutObjectCommand({
-            Bucket: process.env.R2_BUCKET_NAME,
-            Key: fileKey,
-            Body: modifiedPdfBytes,
-            ContentType: 'application/pdf',
-        });
+                // Dynamically scale font size if the box was resized vertically
+                const baseFontSize = isSignature ? 24 : 12;
+                const dynamicFontSize = pdfFieldHeight ? Math.max(12, Math.min(baseFontSize * 2, pdfFieldHeight * 0.6)) : baseFontSize;
 
-        await s3.send(putCommand);
+                page.drawText(textToStamp, {
+                    x: targetX,
+                    y: targetY - (pdfFieldHeight ? (pdfFieldHeight / 2) : 12), 
+                    size: dynamicFontSize,
+                    font: isSignature ? cursiveFont : font,
+                    color: rgb(0, 0.1, 0.4), 
+                });
+            }
+        }
 
-        return true;
+        return await pdfDoc.save();
     } catch (error) {
-        console.error('R2 PDF Stamping Error:', error);
-        throw new Error('Failed to stamp PDF file on Cloudflare R2');
+        console.error('PDF Stamping Error:', error);
+        throw new Error('Failed to stamp PDF file');
     }
 };
 
-module.exports = { applySignatureToPDF };
+
+const appendAuditTrail = async (pdfBuffer, auditLogs, documentName) => {
+    // 1. Load the fully signed PDF
+    const pdfDoc = await PDFDocument.load(pdfBuffer);
+    
+    // 2. Embed standard and bold fonts for formatting
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    // 3. Create a brand new, blank page at the end of the document
+    const page = pdfDoc.addPage();
+    const { width, height } = page.getSize();
+
+    // 4. Draw the Header
+    page.drawText('DSign - Certificate of Completion', { 
+        x: 50, y: height - 60, size: 20, font: boldFont, color: rgb(0, 0.1, 0.4) 
+    });
+    page.drawText(`Document: ${documentName}`, { 
+        x: 50, y: height - 85, size: 12, font 
+    });
+    
+    // Draw a divider line
+    page.drawLine({
+        start: { x: 50, y: height - 100 },
+        end: { x: width - 50, y: height - 100 },
+        thickness: 1,
+        color: rgb(0.8, 0.8, 0.8)
+    });
+
+    // 5. Loop through the logs and print the ledger
+    let cursorY = height - 130;
+
+    for (const log of auditLogs) {
+        // If we run out of space on the page, add another page
+        if (cursorY < 50) {
+            const newPage = pdfDoc.addPage();
+            cursorY = height - 50; 
+        }
+
+        page.drawText(`${log.action.replace(/_/g, ' ')}`, { x: 50, y: cursorY, size: 10, font: boldFont });
+        cursorY -= 15;
+        
+        page.drawText(`Actor: ${log.actor_email}`, { x: 50, y: cursorY, size: 10, font });
+        cursorY -= 15;
+        
+        page.drawText(`Date: ${new Date(log.created_at).toLocaleString('en-US')} | IP: ${log.ip_address || 'Unknown'}`, { x: 50, y: cursorY, size: 10, font });
+        cursorY -= 15;
+        
+        if (log.resulting_hash) {
+            page.drawText(`SHA-256 Hash: ${log.resulting_hash}`, { x: 50, y: cursorY, size: 8, font, color: rgb(0.4, 0.4, 0.4) });
+            cursorY -= 15;
+        }
+        
+        cursorY -= 20; // Extra spacing between log entries
+    }
+
+    return await pdfDoc.save();
+};
+
+
+module.exports = { stampDocument, appendAuditTrail };

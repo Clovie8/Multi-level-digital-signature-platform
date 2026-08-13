@@ -2,9 +2,8 @@ const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
 const authenticateToken = (req, res, next) => {
-    // Look for the token in the headers
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; 
+    // Check for token in secure HttpOnly cookie OR Authorization header (for fallback/Postman)
+    const token = req.cookies?.token || (req.headers.authorization && req.headers.authorization.split(' ')[1]); 
 
     // If there is no token, reject the request
     if (!token) {
