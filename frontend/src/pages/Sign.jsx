@@ -44,9 +44,6 @@ export default function Sign() {
 
   // OTP Authentication State
   const [requiresOtp, setRequiresOtp] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpInput, setOtpInput] = useState('');
-  const [otpError, setOtpError] = useState('');
 
   // Fix Signature Canvas Scaling
   useEffect(() => {
@@ -67,8 +64,14 @@ export default function Sign() {
   useEffect(() => {
     const fetchSigningData = async () => {
       try {
+        const searchParams = new URLSearchParams(window.location.search);
+        const otpParam = searchParams.get('otp');
+        const url = otpParam 
+          ? `http://localhost:5000/api/documents/sign/${token}?otp=${otpParam}` 
+          : `http://localhost:5000/api/documents/sign/${token}`;
+
         // REPLACE headers WITH withCredentials
-        const res = await axios.get(`http://localhost:5000/api/documents/sign/${token}`, {
+        const res = await axios.get(url, {
           withCredentials: true
         });
         
@@ -94,39 +97,6 @@ export default function Sign() {
     if (token) fetchSigningData();
   }, [token, navigate]);
 
-  const handleRequestOtp = async () => {
-    try {
-      setIsLoading(true);
-      await axios.post(`http://localhost:5000/api/documents/sign/${token}/request-otp`, {}, { withCredentials: true });
-      setOtpSent(true);
-      toast.success('Security code sent to your email');
-    } catch (error) {
-      toast.error('Failed to send security code');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    if (otpInput.length !== 6) return setOtpError('Code must be 6 digits');
-    try {
-      setIsLoading(true);
-      setOtpError('');
-      // ADD withCredentials
-      const res = await axios.post(`http://localhost:5000/api/documents/sign/${token}/verify-otp`, { otp: otpInput }, { withCredentials: true });
-
-      // Verification Success! Unlock the document.
-      setRequiresOtp(false);
-      setDocumentFile(res.data.pdfUrl);
-      setSignerInfo(res.data.signer);
-      setFields(res.data.fields || []);
-      toast.success('Authentication successful');
-    } catch (error) {
-      setOtpError(error.response?.data?.error || 'Invalid code');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const onDocumentLoadSuccess = ({ numPages }) => {
     setTotalPages(numPages);
@@ -215,52 +185,22 @@ export default function Sign() {
   if (requiresOtp) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-8 border border-slate-200">
-          <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold text-slate-800">Authentication Required</h2>
-            <p className="text-slate-500 mt-2">
-              To securely access this document, please verify your identity.
-            </p>
-          </div>
-          
-          {!otpSent ? (
-            <button
-              onClick={handleRequestOtp}
-              disabled={isLoading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center disabled:opacity-50"
-            >
-              {isLoading ? 'Sending...' : 'Send Security Code'}
-            </button>
-          ) : (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Enter 6-Digit Code</label>
-                <input
-                  type="text"
-                  maxLength={6}
-                  value={otpInput}
-                  onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg text-center text-2xl tracking-widest focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                  placeholder="000000"
-                />
-                {otpError && <p className="text-red-500 text-sm mt-1 text-center">{otpError}</p>}
-              </div>
-              <button
-                onClick={handleVerifyOtp}
-                disabled={isLoading || otpInput.length !== 6}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center disabled:opacity-50"
-              >
-                {isLoading ? 'Verifying...' : 'Unlock Document'}
-              </button>
-              <button
-                onClick={handleRequestOtp}
-                disabled={isLoading}
-                className="w-full text-blue-600 hover:text-blue-800 text-sm font-medium mt-2"
-              >
-                Resend Code
-              </button>
+        <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-8 border border-slate-200 text-center">
+          <div className="flex justify-center mb-4">
+            <div className="h-16 w-16 bg-red-100 rounded-full flex items-center justify-center text-red-600">
+              <X size={32} />
             </div>
-          )}
+          </div>
+          <h2 className="text-2xl font-bold text-slate-800">Secure Link Expired</h2>
+          <p className="text-slate-500 mt-2 mb-6">
+            For your security, this document link is invalid or has expired. Please contact the initiator to request a new link.
+          </p>
+          <button
+            onClick={() => navigate('/login')}
+            className="w-full bg-slate-800 hover:bg-slate-900 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+          >
+            Return Home
+          </button>
         </div>
       </div>
     );

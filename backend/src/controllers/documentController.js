@@ -124,8 +124,14 @@ const dispatchDocument = async (req, res) => {
             // Path A: Do NOT fire the email. We will redirect them instead.
             console.log(`Initiator is Level 1. Skipping email. Token: ${firstSignerToken}`);
         } else if (firstSignerEmail) {
-            // Path B: It is a third party. Fire the email securely.
-            await sendSignatureEmail(firstSignerEmail, firstSignerName, firstSignerToken, documentName);
+            // Path B: Third party. Generate OTP for magic link.
+            const otp = Math.floor(100000 + Math.random() * 900000).toString();
+            await db.query(`
+                UPDATE workflow_steps 
+                SET otp_code = $1, otp_expires_at = CURRENT_TIMESTAMP + INTERVAL '7 days'
+                WHERE access_token = $2
+            `, [otp, firstSignerToken]);
+            await sendSignatureEmail(firstSignerEmail, firstSignerName, firstSignerToken, documentName, otp);
         }
 
         // Return the token ONLY if the initiator is first, otherwise return null for security
@@ -180,10 +186,11 @@ async function releaseDocumentForSigning(stepData) {
 const getSigningView = async (req, res) => {
     try {
         const { token } = req.params;
+        const { otp } = req.query; // 1. Extract the magic link OTP from the URL
 
         const query = `
             SELECT 
-                ws.id AS step_id, ws.signer_name, ws.signer_email, ws.status AS step_status, ws.signature_ui_data, ws.step_order, ws.document_id,
+                ws.id AS step_id, ws.signer_name, ws.signer_email, ws.status AS step_status, ws.signature_ui_data, ws.step_order, ws.document_id, ws.otp_code, ws.otp_expires_at,
                 d.file_name, d.original_file_path, d.signed_file_path, d.status AS doc_status
             FROM workflow_steps ws
             JOIN documents d ON ws.document_id = d.id
@@ -225,15 +232,25 @@ const getSigningView = async (req, res) => {
             }
         }
 
-        // Path B: Third Party requires OTP Authentication
-        return res.status(200).json({
-            requiresOtp: true,
-            signer: {
-                id: stepData.step_id,
-                name: stepData.signer_name,
-                email: stepData.signer_email
+        // Path B: Third Party Tokenized Magic Link Validation
+        if (otp) {
+            // Check if the OTP matches AND is not expired
+            if (stepData.otp_code === otp && new Date(stepData.otp_expires_at) > new Date()) {
+                try {
+                    // Valid magic link! Release the document instantly.
+                    const releaseData = await releaseDocumentForSigning(stepData);
+                    return res.status(200).json(releaseData);
+                } catch (hashError) {
+                    return res.status(400).json({ error: hashError.message });
+                }
+            } else {
+                // OTP is wrong or expired
+                return res.status(200).json({ requiresOtp: true }); // Triggers the 'Secure Link Expired' screen
             }
-        });
+        }
+
+        // If they are a third party but no OTP was provided in the URL
+        return res.status(200).json({ requiresOtp: true });
 
     } catch (error) {
         console.error('Fetch Signing View Error:', error);
@@ -389,11 +406,19 @@ const completeSigning = async (req, res) => {
             // Path A: There is a next signer (Bob). Hand the document off!
             const nextSigner = nextStepRes.rows[0];
             
+            const otp = Math.floor(100000 + Math.random() * 900000).toString();
+            await db.query(`
+                UPDATE workflow_steps 
+                SET otp_code = $1, otp_expires_at = CURRENT_TIMESTAMP + INTERVAL '7 days'
+                WHERE access_token = $2
+            `, [otp, nextSigner.access_token]);
+
             await sendSignatureEmail(
                 nextSigner.signer_email, 
                 nextSigner.signer_name, 
                 nextSigner.access_token, 
-                stepData.file_name
+                stepData.file_name,
+                otp
             );
             
             console.log(`[Workflow] Document handed off to Level ${nextStepOrder}: ${nextSigner.signer_email}`);

@@ -12,10 +12,11 @@ const transporter = nodemailer.createTransport({
     },
 });
 
-const sendSignatureEmail = async (signerEmail, signerName, token, documentName) => {
+const sendSignatureEmail = async (signerEmail, signerName, token, documentName, otp = null, expires = null) => {
     try {
         // Construct the secure link pointing to your future React frontend
-        const secureLink = `${process.env.FRONTEND_URL}/sign/${token}`;
+        let secureLink = `${process.env.FRONTEND_URL}/sign/${token}`;
+        if (otp) secureLink += `?otp=${otp}`;
 
         const mailOptions = {
             from: `"Digital Signature Platform" <${process.env.SMTP_USER}>`,
