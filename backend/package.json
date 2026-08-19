@@ -25,7 +25,9 @@
     "multer": "^2.2.0",
     "nodemailer": "^9.0.4",
     "pdf-lib": "^1.17.1",
-    "pg": "^8.22.0",
+    "pg": "^8.23.0",
+    "pg-harness": "^0.2.1",
+    "sequelize": "^6.37.8",
     "uuid": "^14.0.1"
   },
   "devDependencies": {

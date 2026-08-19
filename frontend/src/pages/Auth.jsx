@@ -198,8 +198,8 @@ export default function Auth() {
       toast.success('Welcome back to DSign.');
       navigate('/');
     } catch (err) {
-      if (err.response?.data?.requiresVerification) {
-        toast.error('Please verify your account first.');
+      if (err.response?.data?.error === 'Account not verified. Please check your email.') {
+        toast.error('Account not verified. A new code was sent to your email.');
         setView('verify'); 
       } else {
         toast.error(err.response?.data?.error || 'Invalid credentials');

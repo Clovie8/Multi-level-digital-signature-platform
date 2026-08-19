@@ -5,6 +5,11 @@ const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
+const { sequelize } = require('./models'); // Import Sequelize
+
+const errorMiddleware = require('./middleware/errorMiddleware'); // Import Global Error Middleware
+
+// Route Imports
 const documentRoutes = require('./routes/documentRoutes');
 const authRoutes = require('./routes/authRoutes');
 const workflowRoutes = require('./routes/workflowRoutes');
@@ -36,14 +41,26 @@ const authLimiter = rateLimit({
 });
 app.use('/api/auth/', authLimiter);
 
-// Routes
+// Mount Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/workflows', workflowRoutes);
 app.use('/api/signatures', signatureRoutes);
 
-// Start Server
+// Mount the Global Error Handler 
+// This must be the very last app.use() so it can catch everything!
+app.use(errorMiddleware);
+
+// Start Server (Only after Database connects successfully)
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`Digital Signature API running on port ${PORT}`);
-});
+
+sequelize.authenticate()
+    .then(() => {
+        console.log('Database connected via Sequelize!');
+        app.listen(PORT, () => {
+            console.log(`Digital Signature API running on port ${PORT}`);
+        });
+    })
+    .catch(err => {
+        console.error('Unable to connect to the database:', err);
+    });

@@ -79,18 +79,18 @@ const stampDocument = async (pdfBuffer, fields, completedValues) => {
 
 
 const appendAuditTrail = async (pdfBuffer, auditLogs, documentName) => {
-    // 1. Load the fully signed PDF
+    // Load the fully signed PDF
     const pdfDoc = await PDFDocument.load(pdfBuffer);
     
-    // 2. Embed standard and bold fonts for formatting
+    // Embed standard and bold fonts for formatting
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    // 3. Create a brand new, blank page at the end of the document
+    // Create a brand new, blank page at the end of the document
     const page = pdfDoc.addPage();
     const { width, height } = page.getSize();
 
-    // 4. Draw the Header
+    // Draw the Header
     page.drawText('DSign - Certificate of Completion', { 
         x: 50, y: height - 60, size: 20, font: boldFont, color: rgb(0, 0.1, 0.4) 
     });
@@ -106,11 +106,10 @@ const appendAuditTrail = async (pdfBuffer, auditLogs, documentName) => {
         color: rgb(0.8, 0.8, 0.8)
     });
 
-    // 5. Loop through the logs and print the ledger
+    // Loop through the logs and print the ledger
     let cursorY = height - 130;
 
     for (const log of auditLogs) {
-        // If we run out of space on the page, add another page
         if (cursorY < 50) {
             const newPage = pdfDoc.addPage();
             cursorY = height - 50; 
@@ -119,22 +118,26 @@ const appendAuditTrail = async (pdfBuffer, auditLogs, documentName) => {
         page.drawText(`${log.action.replace(/_/g, ' ')}`, { x: 50, y: cursorY, size: 10, font: boldFont });
         cursorY -= 15;
         
-        page.drawText(`Actor: ${log.actor_email}`, { x: 50, y: cursorY, size: 10, font });
+        // Fallback to camelCase for Sequelize compatibility
+        const actorEmail = log.actorEmail || log.actor_email;
+        const createdAt = log.createdAt || log.created_at;
+        const ipAddress = log.ipAddress || log.ip_address || 'Unknown';
+        const resultingHash = log.resultingHash || log.resulting_hash;
+
+        page.drawText(`Actor: ${actorEmail}`, { x: 50, y: cursorY, size: 10, font });
         cursorY -= 15;
         
-        page.drawText(`Date: ${new Date(log.created_at).toLocaleString('en-US')} | IP: ${log.ip_address || 'Unknown'}`, { x: 50, y: cursorY, size: 10, font });
+        page.drawText(`Date: ${new Date(createdAt).toLocaleString('en-US')} | IP: ${ipAddress}`, { x: 50, y: cursorY, size: 10, font });
         cursorY -= 15;
         
-        if (log.resulting_hash) {
-            page.drawText(`SHA-256 Hash: ${log.resulting_hash}`, { x: 50, y: cursorY, size: 8, font, color: rgb(0.4, 0.4, 0.4) });
+        if (resultingHash) {
+            page.drawText(`SHA-256 Hash: ${resultingHash}`, { x: 50, y: cursorY, size: 8, font, color: rgb(0.4, 0.4, 0.4) });
             cursorY -= 15;
         }
         
-        cursorY -= 20; // Extra spacing between log entries
+        cursorY -= 20; 
     }
-
     return await pdfDoc.save();
-};
-
+}
 
 module.exports = { stampDocument, appendAuditTrail };

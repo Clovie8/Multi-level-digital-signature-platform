@@ -1,31 +1,22 @@
-const { Pool } = require('pg');
+const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
-const pool = new Pool({
-    user: process.env.DB_USER,
-    host: process.env.DB_HOST,
-    database: process.env.DB_NAME,
-    password: process.env.DB_PASSWORD,
-    port: process.env.DB_PORT,
-});
+const sequelize = new Sequelize(
+    process.env.DB_NAME,
+    process.env.DB_USER,
+    process.env.DB_PASS,
+    {
+        host: process.env.DB_HOST,
+        port: process.env.DB_PORT || 5432,
+        dialect: 'postgres',
+        logging: false, // Set to console.log to see the raw SQL queries generated
+        pool: {
+            max: 10,
+            min: 0,
+            acquire: 30000,
+            idle: 10000
+        }
+    }
+);
 
-pool.on('connect', () => {
-    console.log('Connected to the PostgreSQL database.');
-});
-
-// TESTING IF DATABASE CONNECTED WELL AND DISPLAY CURRENT TIME(I commented this out because it was just for testing purposes, but you can uncomment it if you want to test the database connection again)
-// if (require.main === module) {
-//     pool.query('SELECT NOW()', (err, res) => {
-//         if (err) {
-//             console.error('Database connection failed:', err.message);
-//         } else {
-//             console.log('Database connected successfully!');
-//             console.log('Database Time:', res.rows[0].now);
-//         }
-//         pool.end();
-//     });
-// }
-
-module.exports = {
-    query: (text, params) => pool.query(text, params),
-};
+module.exports = sequelize;
