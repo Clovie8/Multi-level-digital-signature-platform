@@ -27,14 +27,14 @@ const dispatchDocument = asyncHandler(async (req, res) => {
 
 const getSigningView = asyncHandler(async (req, res) => {
     const { token } = req.params;
-    const { otp } = req.query; 
+    const { otp } = req.query;
 
-    const sessionToken = req.cookies?.token; 
+    const sessionToken = req.cookies?.token;
     let loggedInEmail = null;
     if (sessionToken) {
         try {
             const decoded = jwt.verify(sessionToken, process.env.JWT_SECRET);
-            loggedInEmail = decoded.email; 
+            loggedInEmail = decoded.email;
         } catch (err) { }
     }
 
@@ -43,6 +43,7 @@ const getSigningView = asyncHandler(async (req, res) => {
         res.status(200).json(data);
     } catch (error) {
         if (error.message === 'INVALID_LINK') throw new NotFoundError('Invalid or expired signing link.');
+        if (error.message === 'DOCUMENT_DECLINED') throw new ValidationError('This document was declined and is no longer available for signing.');
         if (error.message === 'ALREADY_SIGNED') throw new ValidationError('This document has already been signed or voided by this user.');
         if (error.message === 'INTEGRITY_COMPROMISED') throw new ValidationError('Document Integrity Compromised.');
         throw error;
@@ -55,15 +56,32 @@ const completeSigning = asyncHandler(async (req, res) => {
     const ipAddress = req.ip || req.connection.remoteAddress;
 
     const { step, document } = await documentService.completeSigning(token, completedFields, updatedFields, ipAddress);
-    
+
     res.status(200).json({ message: 'Document securely signed and sealed.' });
 
     await documentService.handleNextWorkflowStep(step, document);
 });
 
+const declineSigning = asyncHandler(async (req, res) => {
+    const { token } = req.params;
+    const { reason } = req.body;
+    const ipAddress = req.ip || req.connection.remoteAddress;
+
+    try {
+        await documentService.declineSigning(token, reason, ipAddress);
+        res.status(200).json({ message: 'Signature declined. The initiator has been notified.' });
+    } catch (error) {
+        if (error.message === 'INVALID_STATE') throw new UnauthorizedError('Invalid token, or document already resolved.');
+        if (error.message === 'MISSING_REASON') throw new ValidationError('Please provide a reason for declining.');
+        throw error;
+    }
+});
+
+
 module.exports = {
     uploadDocument,
     dispatchDocument,
     getSigningView,
-    completeSigning
+    completeSigning,
+    declineSigning
 };

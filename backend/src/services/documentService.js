@@ -1,21 +1,21 @@
 const crypto = require('crypto');
 const { Document, WorkflowStep, AuditLog, User, sequelize } = require('../models');
 const { uploadToR2, getPresignedPdfUrl, getFileBufferFromR2, uploadBufferToR2 } = require('../utils/s3Manager');
-const { sendSignatureEmail, sendOTPEmail, sendCompletionEmail } = require('../utils/emailManager');
+const { sendSignatureEmail, sendOTPEmail, sendCompletionEmail, sendDeclineEmail } = require('../utils/emailManager');
 const { stampDocument, appendAuditTrail } = require('../utils/pdfManager');
 
 class DocumentService {
-    
+
     // Upload Document
     async upload(fileBuffer, originalName, initiatorId) {
         if (!fileBuffer) throw new Error('NO_FILE');
-        
+
         // Upload to Cloudflare R2
         const r2FileKey = await uploadToR2(fileBuffer, originalName);
 
         // Save to DB using Sequelize
         const document = await Document.create({
-            initiator_id: initiatorId, 
+            initiator_id: initiatorId,
             fileName: originalName,
             originalFilePath: r2FileKey,
             status: 'draft'
@@ -118,12 +118,13 @@ class DocumentService {
 
     // Get Signing View Data
     async getSigningViewData(token, queryOtp, loggedInEmail) {
-        const step = await WorkflowStep.findOne({ 
+        const step = await WorkflowStep.findOne({
             where: { accessToken: token },
             include: [{ model: Document }] // Eager load the related document
         });
 
         if (!step) throw new Error('INVALID_LINK');
+        if (step.Document.status === 'rejected') throw new Error('DOCUMENT_DECLINED');
         if (step.status !== 'pending') throw new Error('ALREADY_SIGNED');
 
         const isInitiator = loggedInEmail && loggedInEmail === step.signerEmail;
@@ -140,7 +141,7 @@ class DocumentService {
 
         return { requiresOtp: true };
     }
-    
+
     // Complete Signing
     async completeSigning(token, completedFields, updatedFields, ipAddress) {
         const transaction = await sequelize.transaction();
@@ -148,7 +149,7 @@ class DocumentService {
         try {
             const step = await WorkflowStep.findOne({ where: { accessToken: token }, transaction });
             if (!step || step.status !== 'pending') throw new Error('INVALID_STATE');
-            
+
             const document = await Document.findByPk(step.document_id, { transaction });
 
             const targetFileKey = document.signedFilePath || document.originalFilePath;
@@ -180,6 +181,40 @@ class DocumentService {
         }
     }
 
+    // Decline Signing
+    async declineSigning(token, reason, ipAddress) {
+        const transaction = await sequelize.transaction();
+
+        try {
+            const step = await WorkflowStep.findOne({ where: { accessToken: token }, transaction });
+            if (!step || step.status !== 'pending') throw new Error('INVALID_STATE');
+            if (!reason || !reason.trim()) throw new Error('MISSING_REASON');
+
+            const document = await Document.findByPk(step.document_id, { include: [User], transaction });
+
+            await step.update({ status: 'rejected', declineReason: reason }, { transaction });
+            await document.update({ status: 'rejected' }, { transaction });
+
+            await AuditLog.create({
+                document_id: document.id,
+                action: `DOCUMENT_DECLINED: ${reason}`,
+                actorEmail: step.signerEmail,
+                ipAddress: ipAddress
+            }, { transaction });
+
+            await transaction.commit();
+
+            await sendDeclineEmail(document.User.email, document.fileName, step.signerName, reason);
+
+            return { document };
+
+        } catch (error) {
+            await transaction.rollback();
+            throw error;
+        }
+    }
+
+
     // Trigger Next Step or Finalize
     async handleNextWorkflowStep(completedStep, document) {
         const nextStepOrder = completedStep.stepOrder + 1;
@@ -187,9 +222,9 @@ class DocumentService {
 
         if (nextStep) {
             const otp = Math.floor(100000 + Math.random() * 900000).toString();
-            await nextStep.update({ 
-                otpCode: otp, 
-                otpExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) 
+            await nextStep.update({
+                otpCode: otp,
+                otpExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
             });
             await sendSignatureEmail(nextStep.signerEmail, nextStep.signerName, nextStep.accessToken, document.fileName, otp);
             console.log(`[Workflow] Document handed off to Level ${nextStepOrder}: ${nextStep.signerEmail}`);
@@ -201,9 +236,9 @@ class DocumentService {
 
     // Finalize Document
     async finalizeDocument(documentId) {
-         try {
+        try {
             const document = await Document.findByPk(documentId, {
-                include: [User] 
+                include: [User]
             });
 
             // Fetch audit logs sorted by creation date
@@ -231,10 +266,10 @@ class DocumentService {
             // Email distribution logic
             const steps = await WorkflowStep.findAll({ where: { document_id: documentId } });
             const stepEmails = steps.map(s => s.signerEmail);
-            
+
             // Extract the initiator's email directly from the included User model
             const initiatorEmail = document.User.email;
-            
+
             // Deduplicate the list using a Set
             const participantEmails = [...new Set([...stepEmails, initiatorEmail])];
             const finalSecureLink = await getPresignedPdfUrl(finalFileKey);

@@ -2,11 +2,12 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 
-const { 
-    uploadDocument, 
-    dispatchDocument, 
-    getSigningView, 
-    completeSigning 
+const {
+    uploadDocument,
+    dispatchDocument,
+    getSigningView,
+    completeSigning,
+    declineSigning
 } = require('../controllers/documentController');
 
 const authenticateToken = require('../middleware/authMiddleware');
@@ -20,5 +21,6 @@ router.post('/:id/dispatch', authenticateToken, dispatchDocument);
 // Public Signer Routes (Auth handled via Tokenized Magic Links in URL)
 router.get('/sign/:token', getSigningView);
 router.post('/sign/:token/complete', completeSigning);
+router.post('/sign/:token/decline', declineSigning);
 
 module.exports = router;

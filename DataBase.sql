@@ -47,6 +47,7 @@ CREATE TABLE workflow_steps (
     step_hash TEXT, -- The cryptographic hash generated right after THIS step
     otp_code VARCHAR(10),
     otp_expires_at TIMESTAMP WITH TIME ZONE,
+    decline_reason TEXT,
     UNIQUE (document_id, step_order)
 );
 

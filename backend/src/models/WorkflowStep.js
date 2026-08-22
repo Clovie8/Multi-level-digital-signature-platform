@@ -34,6 +34,7 @@ const WorkflowStep = sequelize.define('WorkflowStep', {
     stepHash: DataTypes.TEXT,
     otpCode: DataTypes.STRING(10),
     otpExpiresAt: DataTypes.DATE,
+    declineReason: DataTypes.TEXT,
 }, {
     tableName: 'workflow_steps',
     underscored: true,

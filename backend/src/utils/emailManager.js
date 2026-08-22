@@ -46,7 +46,7 @@ const sendSignatureEmail = async (signerEmail, signerName, token, documentName, 
     } catch (error) {
         console.error('Email Dispatch Error:', error);
         // We log the error but don't throw it, so a failed email doesn't crash the database transaction
-        return false; 
+        return false;
     }
 };
 
@@ -78,7 +78,7 @@ const sendPasswordResetEmail = async (userEmail, token) => {
         return true;
     } catch (error) {
         console.error('Email Dispatch Error:', error);
-        return false; 
+        return false;
     }
 };
 
@@ -167,4 +167,32 @@ const sendCompletionEmail = async (signerEmail, documentName, secureLink) => {
     }
 };
 
-module.exports = { sendSignatureEmail, sendPasswordResetEmail, sendVerificationEmail, sendOTPEmail, sendCompletionEmail };
+const sendDeclineEmail = async (initiatorEmail, documentName, declinerName, reason) => {
+    try {
+        const mailOptions = {
+            from: `"Digital Signature Platform" <${process.env.SMTP_USER}>`,
+            to: initiatorEmail,
+            subject: `Declined: ${documentName}`,
+            html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eaeaea; border-radius: 8px;">
+                    <h2 style="color: #b91c1c;">Signature Declined</h2>
+                    <p style="color: #555; font-size: 16px;">
+                        <strong>${declinerName}</strong> has declined to sign <strong>${documentName}</strong>. The signing workflow has been halted and no further signers will be notified.
+                    </p>
+                    <div style="background-color: #fef2f2; border-left: 4px solid #b91c1c; padding: 12px 16px; margin: 20px 0;">
+                        <p style="color: #7f1d1d; font-size: 14px; margin: 0;"><strong>Reason given:</strong> ${reason}</p>
+                    </div>
+                </div>
+            `
+        };
+        const info = await transporter.sendMail(mailOptions);
+        console.log(`Decline email sent to ${initiatorEmail}: ${info.messageId}`);
+        return true;
+    } catch (error) {
+        console.error('Decline Email Error:', error);
+        return false;
+    }
+};
+
+
+module.exports = { sendSignatureEmail, sendPasswordResetEmail, sendVerificationEmail, sendOTPEmail, sendCompletionEmail, sendDeclineEmail };
