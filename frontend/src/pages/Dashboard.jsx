@@ -60,12 +60,6 @@ export default function Dashboard() {
     setCurrentPage(1);
   };
 
-  const handleSignOut = () => {
-    localStorage.clear();
-    toast.success('Securely signed out.');
-    navigate('/login', { replace: true });
-  };
-
   // 1: UPLOAD HANDLERS
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -215,6 +209,15 @@ export default function Dashboard() {
     e.preventDefault();
     const fieldType = e.dataTransfer.getData('fieldType');
     if (!fieldType) return;
+
+    const fieldAlreadyExists = fields.some(
+      (f) => f.type === fieldType && f.signerId === activeSignerId
+    );
+
+    if (fieldAlreadyExists) {
+      toast.error(`You have already placed a ${fieldType} for this signer.`);
+      return;
+    }
 
     // Calculate drop coordinates relative to the PDF container
     const bounds = e.currentTarget.getBoundingClientRect();
