@@ -59,9 +59,12 @@ app.use(errorMiddleware);
 // Start Server (Only after Database connects successfully)
 const PORT = process.env.PORT || 5000;
 
+const { startCronJobs } = require('./services/cronService'); // Import Corn service
+
 sequelize.authenticate()
     .then(() => {
         console.log('Database connected via Sequelize!');
+        startCronJobs();
         app.listen(PORT, () => {
             console.log(`Digital Signature API running on port ${PORT}`);
         });
