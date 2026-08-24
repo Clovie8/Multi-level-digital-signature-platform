@@ -30,7 +30,9 @@ class AuthService {
         });
 
         // Fire the verification email
-        await sendVerificationEmail(email, otpToken);
+        sendVerificationEmail(email, otpToken).catch(err =>
+            console.error('Failed to send verification email:', err)
+        );
 
         return { id: newUser.id, name: newUser.name, email: newUser.email };
     }
