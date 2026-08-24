@@ -1,10 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../lib/api';
 import toast from 'react-hot-toast';
 import { Mail, Lock, User, ArrowRight, Key, PenTool, Eye, EyeOff, Loader2, CheckCircle2, XCircle } from 'lucide-react';
-
-axios.defaults.withCredentials = true;
 
 // InputField with Show/Hide Password Toggle
 const InputField = ({ icon: Icon, type, name, placeholder, value, onChange, isPassword, inputRef }) => {
@@ -189,7 +187,7 @@ export default function Auth() {
     e.preventDefault();
     setIsLoading(true);
     try {
-      const res = await axios.post('http://localhost:5000/api/auth/login', {
+      const res = await api.post('/api/auth/login', {
         email: formData.email,
         password: formData.password,
       });
@@ -221,7 +219,7 @@ export default function Auth() {
 
     setIsLoading(true);
     try {
-      await axios.post('http://localhost:5000/api/auth/register', {
+      await api.post('/api/auth/register', {
         name: formData.name,
         email: formData.email,
         password: formData.password,
@@ -241,7 +239,7 @@ export default function Auth() {
     
     setIsLoading(true);
     try {
-      await axios.post('http://localhost:5000/api/auth/verify', {
+      await api.post('/api/auth/verify', {
         email: formData.email,
         otp: formData.otp
       });
@@ -262,7 +260,7 @@ export default function Auth() {
     
     setIsLoading(true);
     try {
-      await axios.post('http://localhost:5000/api/auth/resend-verification', {
+      await api.post('/api/auth/resend-verification', {
         email: formData.email
       });
       toast.success('A new 6-digit code has been sent to your email.');
@@ -277,7 +275,7 @@ export default function Auth() {
     e.preventDefault();
     setIsLoading(true);
     try {
-      await axios.post('http://localhost:5000/api/auth/forgot-password', {
+      await api.post('/api/auth/forgot-password', {
         email: formData.email
       });
       
@@ -294,7 +292,7 @@ export default function Auth() {
     e.preventDefault();
     setIsLoading(true);
     try {
-      await axios.post('http://localhost:5000/api/auth/reset-password', {
+      await api.post('/api/auth/reset-password', {
         email: formData.email,
         resetToken: formData.resetToken,
         newPassword: formData.password

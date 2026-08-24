@@ -1,33 +1,45 @@
 import { useState, useEffect, useRef } from 'react';
-import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation, useOutletContext, Link } from 'react-router-dom';
 import { PenTool, Menu, X, Home, FileSignature, Settings, LogOut, User, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
-import axios from 'axios';
+import api from '../lib/api';
+
+const generateInitials = (name) => {
+  if (!name) return 'U';
+  const nameParts = name.trim().split(' ');
+  if (nameParts.length >= 2) {
+    return (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase();
+  }
+  return name.substring(0, 2).toUpperCase();
+};
 
 export default function Layout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true); // New state for desktop toggle
-  
+
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [currentUser, setCurrentUser] = useState({
-    name: 'Loading...',
-    email: '',
-    initials: '',
-    role: 'User'
-  });
+  // ProtectedRoute already verified the session and fetched the user
+  const { user } = useOutletContext();
+
+  const currentUser = {
+    name: user?.name || 'User',
+    email: user?.email || '',
+    initials: generateInitials(user?.name),
+    role: 'User' // Placeholder until roles are added to schema
+  };
 
   const handleSignOut = async () => {
     try {
       // Tell backend to destroy the HttpOnly cookie
-      await axios.post('http://localhost:5000/api/auth/logout', {}, { withCredentials: true });
-      
+      await api.post('/api/auth/logout', {});
+
       // Clear frontend auth flag
       localStorage.removeItem('isAuthenticated');
-      
+
       toast.success('Securely signed out.');
       navigate('/login', { replace: true });
     } catch (err) {
@@ -37,44 +49,6 @@ export default function Layout() {
       navigate('/login', { replace: true });
     }
   };
-
-  // Fetch Real Data from Database on Load
-  useEffect(() => {
-    const fetchUserData = async () => {
-      try {
-        const res = await axios.get('http://localhost:5000/api/auth/me', {
-          withCredentials: true // Extremely important to pass the secure HttpOnly cookie
-        });
-        
-        const user = res.data;
-
-        const generateInitials = (name) => {
-          if (!name) return 'U';
-          const nameParts = name.trim().split(' ');
-          if (nameParts.length >= 2) {
-            return (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase();
-          }
-          return name.substring(0, 2).toUpperCase();
-        };
-
-        setCurrentUser({
-          name: user.name,
-          email: user.email,
-          initials: generateInitials(user.name),
-          role: 'User' // Placeholder until roles are added to schema
-        });
-      } catch (error) {
-        console.error('Failed to fetch user:', error);
-        // If the cookie is expired/invalid, sign them out properly
-        if (error.response?.status === 401 || error.response?.status === 403) {
-          handleSignOut(); 
-        }
-      }
-    };
-
-    fetchUserData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Close the profile dropdown if the user clicks anywhere else on the screen
   useEffect(() => {
