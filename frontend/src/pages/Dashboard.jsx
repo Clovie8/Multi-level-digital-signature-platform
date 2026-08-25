@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../lib/api';
 import toast from 'react-hot-toast';
 import {
   UploadCloud, Users, FileSignature, CheckCircle, Plus, Trash2, ArrowRight,
@@ -26,7 +26,7 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const res = await axios.get('http://localhost:5000/api/auth/me', { withCredentials: true });
+        const res = await api.get('/api/auth/me');
         setCurrentUser(res.data);
       } catch (err) {
         console.error('Failed to fetch user in Dashboard');
@@ -85,7 +85,7 @@ export default function Dashboard() {
 
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.post('http://localhost:5000/api/documents/upload', formData, {
+      const res = await api.post('/api/documents/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
           'Authorization': `Bearer ${token}`
@@ -172,14 +172,13 @@ export default function Dashboard() {
       const token = localStorage.getItem('token');
       
       // We now include the dragged 'fields' in the payload
-      const res = await axios.post(`http://localhost:5000/api/documents/${documentId}/dispatch`, {
+      const res = await api.post(`/api/documents/${documentId}/dispatch`, {
         signers: signers,
-        fields: fields 
+        fields: fields
       }, {
         headers: {
           'Authorization': `Bearer ${token}`
-        },
-        withCredentials: true
+        }
       });
       
       toast.success(res.data.message);

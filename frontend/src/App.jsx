@@ -1,17 +1,13 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-
 // Component Imports
 import Auth from './pages/Auth';
 import Dashboard from './pages/Dashboard';
+import Documents from './pages/Documents';
+import Settings from './pages/Settings';
 import Sign from './pages/Sign';
-import Layout from './components/Layout'; 
-
-const ProtectedRoute = ({ children }) => {
-  const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-  return children;
-};
+import Layout from './components/Layout';
+import ProtectedRoute from './routes/ProtectedRoute';
 
 function App() {
   return (
@@ -28,21 +24,17 @@ function App() {
         <Route path="/login" element={<Auth />} />
         <Route path="/sign/:token" element={<Sign />} />
 
-        {/* Wrap all protected pages inside the Layout.
-          The <Outlet /> inside Layout.jsx will render the specific nested route (like Dashboard).
+        {/* ProtectedRoute verifies the session, then Layout renders the shell
+          around whichever nested route matches (Dashboard, Documents, Settings).
         */}
-        <Route 
-          element={
-            <ProtectedRoute>
-              <Layout />
-            </ProtectedRoute>
-          }
-        >
-          {/* Index route for the dashboard */}
-          <Route path="/" element={<Dashboard />} />
-          {/* Future routes will go here: <Route path="/documents" element={<Documents />} /> */}
+        <Route element={<ProtectedRoute />}>
+          <Route element={<Layout />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/documents" element={<Documents />} />
+            <Route path="/settings" element={<Settings />} />
+          </Route>
         </Route>
-        
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
