@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import toast from 'react-hot-toast';
 import { PieChart, Pie, Cell, BarChart, Bar, ResponsiveContainer, XAxis } from 'recharts';
+import api from '../lib/api';
 import { Plus, Loader2 } from 'lucide-react';
 
-axios.defaults.withCredentials = true;
+api.defaults.withCredentials = true;
 
 const STATUS_COLORS = {
   awaitingSignature: '#c9a15f',
@@ -42,7 +42,7 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchSummary = async () => {
       try {
-        const res = await axios.get('http://localhost:5000/api/documents/dashboard-summary');
+        const res = await api.get('/api/documents/dashboard-summary');
         setData(res.data);
       } catch (err) {
         toast.error(err.response?.data?.error || 'Failed to load dashboard.');
