@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, useNavigate, useLocation, useOutletContext, Link } from 'react-router-dom';
-import { PenTool, Menu, X, Home, FileSignature, Settings, LogOut, User, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { PenTool, Menu, X, Home, FileSignature, Settings, LogOut, User, ChevronDown, ChevronLeft, ChevronRight,UploadCloud } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
 
@@ -64,7 +64,9 @@ export default function Layout() {
   const navigation = [
     { name: 'Dashboard', href: '/', icon: Home },
     { name: 'Documents', href: '/documents', icon: FileSignature },
+    { name: 'Upload', href: '/upload', icon: UploadCloud },
     { name: 'Settings', href: '/settings', icon: Settings },
+  
   ];
 
   // Dynamically set the Header Title based on the current URL route
