@@ -15,6 +15,33 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString();
 
+// --- TOP-LEVEL COMPONENTS (moved out of Upload to avoid remounting on every render) ---
+
+const StepIcon = ({ stepNumber, current, icon: Icon, title }) => {
+  const isActive = current === stepNumber;
+  const isPast = current > stepNumber;
+  return (
+    <div className={`flex flex-col items-center ${isActive ? 'opacity-100' : 'opacity-40'}`}>
+      <div className={`h-10 w-10 rounded-full flex items-center justify-center mb-2 transition-colors ${isActive ? 'bg-slate-900 text-white shadow-md' : isPast ? 'bg-green-500 text-white' : 'bg-slate-200 text-slate-500'
+        }`}>
+        {isPast ? <CheckCircle className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
+      </div>
+      <span className={`text-xs font-medium ${isActive ? 'text-slate-900' : 'text-slate-500'}`}>{title}</span>
+    </div>
+  );
+};
+
+const DraggableField = ({ icon: Icon, label, type, activeColorClasses, onDragStart }) => (
+  <div
+    draggable
+    onDragStart={(e) => onDragStart(e, type)}
+    className={`flex items-center p-2 mb-2 bg-white border-l-4 ${activeColorClasses.split(' ')[2].replace('-200', '-500')} rounded shadow-sm cursor-grab hover:shadow transition-all`}
+  >
+    <Icon className={`h-3.5 w-3.5 mr-2 ${activeColorClasses.split(' ')[1].replace('-700', '-600')}`} />
+    <span className="text-xs font-medium text-slate-700">{label}</span>
+  </div>
+);
+
 export default function Upload() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -266,34 +293,8 @@ export default function Upload() {
     setFields(prev => prev.filter(f => f.id !== id));
   };
 
-  // --- UI HELPERS ---
-  const StepIcon = ({ stepNumber, current, icon: Icon, title }) => {
-    const isActive = current === stepNumber;
-    const isPast = current > stepNumber;
-    return (
-      <div className={`flex flex-col items-center ${isActive ? 'opacity-100' : 'opacity-40'}`}>
-        <div className={`h-10 w-10 rounded-full flex items-center justify-center mb-2 transition-colors ${isActive ? 'bg-slate-900 text-white shadow-md' : isPast ? 'bg-green-500 text-white' : 'bg-slate-200 text-slate-500'
-          }`}>
-          {isPast ? <CheckCircle className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
-        </div>
-        <span className={`text-xs font-medium ${isActive ? 'text-slate-900' : 'text-slate-500'}`}>{title}</span>
-      </div>
-    );
-  };
-
   const activeSigner = signers.find(s => s.id === activeSignerId) || signers[0];
   const activeColorClasses = activeSigner.color; // e.g. "bg-blue-100 text-blue-700 border-blue-200"
-
-  const DraggableField = ({ icon: Icon, label, type }) => (
-    <div 
-      draggable
-      onDragStart={(e) => handleDragStart(e, type)}
-      className={`flex items-center p-2 mb-2 bg-white border-l-4 ${activeColorClasses.split(' ')[2].replace('-200', '-500')} rounded shadow-sm cursor-grab hover:shadow transition-all`}
-    >
-      <Icon className={`h-3.5 w-3.5 mr-2 ${activeColorClasses.split(' ')[1].replace('-700', '-600')}`} />
-      <span className="text-xs font-medium text-slate-700">{label}</span>
-    </div>
-  );
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] font-sans pb-12">
@@ -455,15 +456,15 @@ export default function Upload() {
               {/* Draggable Fields List */}
               <div className="p-3 flex-1 overflow-y-auto">
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Standard Fields</label>
-                <DraggableField icon={PenTool} label="Signature" type="Signature" />
-                <DraggableField icon={Type} label="Initial" type="Initial" />
-                <DraggableField icon={Calendar} label="Date Signed" type="Date" />
+                <DraggableField icon={PenTool} label="Signature" type="Signature" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
+                <DraggableField icon={Type} label="Initial" type="Initial" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
+                <DraggableField icon={Calendar} label="Date Signed" type="Date" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
                 
                 <div className="mt-4 mb-2 h-px bg-slate-200"></div>
                 
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Data Fields</label>
-                <DraggableField icon={UserSquare} label="Name" type="Name" />
-                <DraggableField icon={Type} label="Text Box" type="Text Box" />
+                <DraggableField icon={UserSquare} label="Name" type="Name" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
+                <DraggableField icon={Type} label="Text Box" type="Text Box" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
               </div>
 
               {/* Properties Panel (Moved to Left Sidebar) */}
