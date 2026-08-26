@@ -28,7 +28,7 @@ export default function Sign() {
   const [documentFile, setDocumentFile] = useState(null);
   const [signerInfo, setSignerInfo] = useState(null);
   const [fields, setFields] = useState([]);
-  
+
   // PDF Viewer State
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -42,12 +42,16 @@ export default function Sign() {
   const padContainerRef = useRef(null);
   const [signMode, setSignMode] = useState('draw'); // 'draw' or 'type'
   const [padSize, setPadSize] = useState({ width: 450, height: 160 });
-  
+
   // Track which fields have been completed
   const [completedFields, setCompletedFields] = useState({});
 
   // OTP Authentication State
   const [requiresOtp, setRequiresOtp] = useState(false);
+
+  // Decline State
+  const [isDeclineModalOpen, setIsDeclineModalOpen] = useState(false);
+  const [declineReason, setDeclineReason] = useState('');
 
   // Fix Signature Canvas Scaling
   useEffect(() => {
@@ -70,7 +74,7 @@ export default function Sign() {
       try {
         const requestUrl = urlOtp ? `/api/documents/sign/${token}?otp=${urlOtp}` : `/api/documents/sign/${token}`;
         const res = await api.get(requestUrl);
-        
+
         if (res.data.requiresOtp) {
           setRequiresOtp(true);
           setSignerInfo(res.data.signer);
@@ -79,12 +83,12 @@ export default function Sign() {
 
         setDocumentFile(res.data.pdfUrl); // The R2 URL or Blob
         setSignerInfo(res.data.signer);
-        setFields(res.data.fields || []); 
-        
+        setFields(res.data.fields || []);
+
       } catch (error) {
         console.error('Failed to load document:', error);
         toast.error(error.response?.data?.error || 'Invalid or expired signing link.');
-        navigate('/login'); 
+        navigate('/login');
       } finally {
         setIsLoading(false);
       }
@@ -159,7 +163,7 @@ export default function Sign() {
       });
 
       toast.success('Document successfully signed and sealed!');
-      
+
       const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
       if (isAuthenticated) {
         navigate('/'); // Send the Initiator back to their Dashboard
@@ -170,6 +174,31 @@ export default function Sign() {
     } catch (error) {
       console.error('Failed to submit:', error);
       toast.error('Failed to save signature. Please try again.');
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeclineClick = () => {
+    setIsDeclineModalOpen(true);
+  };
+
+  const handleConfirmDecline = async () => {
+    if (!declineReason.trim()) {
+      toast.error('Please explain why you are declining.');
+      return;
+    }
+
+    setIsDeclineModalOpen(false);
+    setIsLoading(true);
+    try {
+      await api.post(`/api/documents/sign/${token}/decline`, {
+        reason: declineReason
+      });
+      toast.success('Document declined. The initiator has been notified.');
+      navigate('/login');
+    } catch (error) {
+      console.error('Failed to decline:', error);
+      toast.error(error.response?.data?.error || 'Failed to decline document. Please try again.');
       setIsLoading(false);
     }
   };
@@ -212,7 +241,7 @@ export default function Sign() {
 
   return (
     <div className="flex flex-col h-screen bg-[#FAFAFA] font-sans overflow-hidden">
-      
+
       {/* PUBLIC HEADER - Clean and locked down */}
       <header className="flex items-center justify-between px-6 h-16 bg-white border-b border-slate-200 shadow-sm z-10 shrink-0">
         <div className="flex items-center">
@@ -221,24 +250,31 @@ export default function Sign() {
           </div>
           <span className="text-xl font-bold tracking-tight text-slate-900">DSign</span>
         </div>
-        
+
         <div className="flex items-center space-x-4">
           <div className="hidden sm:block text-right mr-4">
             <p className="text-xs text-slate-500 uppercase tracking-wider font-bold">Signing As</p>
             <p className="text-sm font-semibold text-slate-900">{signerInfo?.name || 'Guest Signer'}</p>
           </div>
-          <button 
+          <button
             onClick={handleCompleteDocument}
             className="flex items-center py-2 px-6 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors shadow-sm"
           >
             <CheckCircle className="mr-2 h-4 w-4" /> Finish
+          </button>
+
+          <button
+            onClick={handleDeclineClick}
+            className="flex items-center py-2 px-6 bg-white border border-red-300 text-red-600 text-sm font-medium rounded hover:bg-red-50 transition-colors"
+          >
+            <X className="mr-2 h-4 w-4" /> Decline
           </button>
         </div>
       </header>
 
       {/* PDF VIEWER AND CANVAS */}
       <main className="flex-1 overflow-auto bg-slate-200/50 flex flex-col relative py-8">
-        
+
         {/* Pagination Controls */}
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white px-4 py-2 rounded-full shadow-lg border border-slate-200 flex items-center space-x-4 z-20">
           <button onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} disabled={currentPage <= 1} className="text-slate-400 hover:text-slate-900 disabled:opacity-50"><ChevronLeft className="h-5 w-5" /></button>
@@ -253,9 +289,9 @@ export default function Sign() {
             onLoadSuccess={onDocumentLoadSuccess}
             loading={<div className="p-20 text-slate-400 w-[750px] text-center">Decrypting document...</div>}
           >
-            <Page 
-              pageNumber={currentPage} 
-              width={750} 
+            <Page
+              pageNumber={currentPage}
+              width={750}
               renderTextLayer={false}
               renderAnnotationLayer={false}
             />
@@ -264,7 +300,7 @@ export default function Sign() {
           {/* Render Assigned Fields overlaying the PDF */}
           {fields.filter(f => f.page === currentPage).map((field) => {
             const isCompleted = !!completedFields[field.id];
-            
+
             return (
               <Rnd
                 key={field.id}
@@ -279,8 +315,8 @@ export default function Sign() {
                   setFields(fields.map(f => f.id === field.id ? { ...f, width: newWidth, height: newHeight } : f));
                 }}
                 className={`absolute cursor-pointer border-2 rounded shadow-sm transition-colors flex items-center justify-center z-30 hover:shadow-md
-                  ${isCompleted 
-                    ? 'bg-blue-50 border-blue-400 text-blue-900' 
+                  ${isCompleted
+                    ? 'bg-blue-50 border-blue-400 text-blue-900'
                     : 'bg-amber-100/90 border-amber-400 text-amber-800 animate-pulse hover:animate-none hover:bg-amber-200/90'
                   }`}
                 onClick={() => handleFieldClick(field)}
@@ -296,9 +332,9 @@ export default function Sign() {
                 ) : (
                   <span className="text-xs font-bold uppercase tracking-wider flex items-center pointer-events-none">
                     {field.type === 'Signature' || field.type === 'Initial' ? (
-                        <><PenTool className="h-3 w-3 mr-1" /> Sign Here</>
+                      <><PenTool className="h-3 w-3 mr-1" /> Sign Here</>
                     ) : (
-                        field.type
+                      field.type
                     )}
                   </span>
                 )}
@@ -313,23 +349,23 @@ export default function Sign() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
           <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
-            
+
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">
               <h3 className="text-lg font-semibold text-slate-900">Adopt Your Signature</h3>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="h-5 w-5" /></button>
             </div>
-            
+
             <div className="p-6">
               {/* Toggle Draw / Type */}
               <div className="flex space-x-4 mb-4 border-b border-slate-200 pb-2">
-                <button 
-                  onClick={() => setSignMode('draw')} 
+                <button
+                  onClick={() => setSignMode('draw')}
                   className={`pb-2 text-sm font-medium transition-colors ${signMode === 'draw' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-900'}`}
                 >
                   Draw
                 </button>
-                <button 
-                  onClick={() => setSignMode('type')} 
+                <button
+                  onClick={() => setSignMode('type')}
                   className={`pb-2 text-sm font-medium transition-colors ${signMode === 'type' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-900'}`}
                 >
                   Type
@@ -339,17 +375,17 @@ export default function Sign() {
               {/* The Input Areas */}
               {signMode === 'draw' ? (
                 <div ref={padContainerRef} className="w-full h-40 border border-slate-300 rounded-lg bg-slate-50 relative">
-                  <SignatureCanvas 
+                  <SignatureCanvas
                     ref={sigPadRef}
                     penColor="black"
-                    canvasProps={{ 
-                      width: padSize.width, 
-                      height: padSize.height, 
-                      className: 'rounded-lg cursor-crosshair' 
-                    }} 
+                    canvasProps={{
+                      width: padSize.width,
+                      height: padSize.height,
+                      className: 'rounded-lg cursor-crosshair'
+                    }}
                   />
-                  <button 
-                    onClick={() => sigPadRef.current.clear()} 
+                  <button
+                    onClick={() => sigPadRef.current.clear()}
                     className="absolute top-2 right-2 text-xs font-medium text-slate-400 hover:text-slate-600 bg-white px-2 py-1 rounded shadow-sm border border-slate-200"
                   >
                     Clear
@@ -374,11 +410,48 @@ export default function Sign() {
 
               <p className="text-xs text-slate-500 text-center mt-6 mb-6">By adopting this signature, you agree that it is a legally binding electronic representation of your signature.</p>
 
-              <button 
+              <button
                 onClick={handleAdoptSignature}
                 className="w-full py-3 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
               >
                 Adopt and Sign
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DECLINE MODAL */}
+      {isDeclineModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsDeclineModalOpen(false)}></div>
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">
+              <h3 className="text-lg font-semibold text-slate-900">Decline to Sign</h3>
+              <button onClick={() => setIsDeclineModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="h-5 w-5" /></button>
+            </div>
+
+            <div className="p-6">
+              <p className="text-sm text-slate-600 mb-4">
+                This will halt the entire signing workflow and notify the initiator. Please explain why you're declining.
+              </p>
+              <textarea
+                value={declineReason}
+                onChange={(e) => setDeclineReason(e.target.value)}
+                maxLength={500}
+                rows={4}
+                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 resize-none"
+                placeholder="e.g. Incorrect terms in section 3, wrong signer assigned..."
+              />
+              <p className="text-xs text-slate-400 text-right mt-1">{declineReason.length}/500</p>
+
+              <button
+                onClick={handleConfirmDecline}
+                disabled={!declineReason.trim()}
+                className="w-full mt-4 py-3 px-4 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Confirm Decline
               </button>
             </div>
           </div>
