@@ -8,6 +8,7 @@ import Settings from './pages/Settings';
 import Sign from './pages/Sign';
 import Layout from './components/Layout';
 import ProtectedRoute from './routes/ProtectedRoute';
+import Upload from './pages/Upload';
 
 function App() {
   return (
@@ -32,6 +33,7 @@ function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/documents" element={<Documents />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/upload" element={<Upload />} />
           </Route>
         </Route>
 
