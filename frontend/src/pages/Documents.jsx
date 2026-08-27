@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 import toast from 'react-hot-toast';
 import {
   FileSignature, RotateCcw, Layers, Ban, Clock, CheckCircle2,
   AlertTriangle, UploadCloud, X, Plus, Search,
-  Eye, Bell, Download, Pencil, ArrowRight
+  Eye, Bell, Download, Pencil, History, MoreVertical
 } from 'lucide-react';
 
 const STATUS_META = {
@@ -77,11 +77,84 @@ function PendingOnCell({ document, currentUser }) {
   return <span className="text-xs text-slate-400">—</span>;
 }
 
+function VersionHistoryModal({ documentId, onClose, onOpenVersion }) {
+  const [versions, setVersions] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await api.get(`/api/documents/${documentId}/versions`);
+        setVersions(res.data.versions);
+      } catch (err) {
+        toast.error(err.response?.data?.error || 'Could not load version history.');
+        onClose();
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    load();
+  }, [documentId, onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/50 px-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between mb-1">
+          <h3 className="text-lg font-semibold text-slate-900">Version history</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <p className="text-sm text-slate-500 mb-5">Every version this document has gone through, oldest first.</p>
+
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8 text-slate-400 text-sm">Loading…</div>
+        ) : (
+          <div className="space-y-2">
+            {(versions || []).map((v) => (
+              <button
+                key={v.id}
+                onClick={() => { onOpenVersion(v.id); onClose(); }}
+                className="w-full text-left border border-slate-200 rounded-lg p-3 hover:border-slate-400 hover:bg-slate-50 transition-colors"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold text-slate-900">Version {v.version}</span>
+                  <StatusPill status={v.status} />
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  {new Date(v.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                </p>
+                {v.declineReason && (
+                  <p className="text-xs text-slate-600 italic mt-1.5">
+                    Declined by <span className="font-medium">{v.declinedBy}</span>: "{v.declineReason}"
+                  </p>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RowActions({ document, onView }) {
+  const navigate = useNavigate();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isSendingReminder, setIsSendingReminder] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-  const btnCls = "h-9 w-9 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
-  const comingSoon = (label) => toast(`${label} coming soon.`);
+  const [isVersionModalOpen, setIsVersionModalOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsMenuOpen(false);
+      }
+    };
+    window.document.addEventListener('mousedown', handleClickOutside);
+    return () => window.document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleSendReminder = async () => {
     setIsSendingReminder(true);
@@ -107,36 +180,57 @@ function RowActions({ document, onView }) {
     }
   };
 
-  const extra = (() => {
-    switch (document.status) {
-      case 'in_progress':
-      case 'pending':
-        return (
-          <button className={btnCls} onClick={handleSendReminder} disabled={isSendingReminder} title="Send reminder">
-            <Bell className="h-5 w-5" />
-          </button>
-        );
-      case 'completed':
-        return (
-          <button className={btnCls} onClick={handleDownload} disabled={isDownloading} title="Download">
-            <Download className="h-5 w-5" />
-          </button>
-        );
-      case 'superseded':
-        return <button className={btnCls} onClick={() => comingSoon('Version history')} title="View latest version"><ArrowRight className="h-5 w-5" /></button>;
-      default:
-        return null;
-    }
-  })();
+  const menuItemCls = "w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
+
+  const items = [];
+  if (document.status === 'draft') {
+    items.push({ key: 'edit', label: 'Edit', icon: Pencil, onClick: () => navigate(`/upload?edit=${document.id}`) });
+  } else {
+    items.push({ key: 'view', label: 'View', icon: Eye, onClick: () => onView(document.id) });
+  }
+  if (document.status === 'in_progress' || document.status === 'pending') {
+    items.push({ key: 'remind', label: isSendingReminder ? 'Sending…' : 'Send reminder', icon: Bell, onClick: handleSendReminder, disabled: isSendingReminder });
+  }
+  if (document.status === 'completed') {
+    items.push({ key: 'download', label: isDownloading ? 'Downloading…' : 'Download', icon: Download, onClick: handleDownload, disabled: isDownloading });
+  }
+  items.push({ key: 'versions', label: 'Version history', icon: History, onClick: () => setIsVersionModalOpen(true) });
 
   return (
-    <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-      {document.status === 'draft' ? (
-        <button className={btnCls} onClick={() => comingSoon('Draft editing')} title="Edit"><Pencil className="h-5 w-5" /></button>
-      ) : (
-        <button className={btnCls} onClick={() => onView(document.id)} title="View"><Eye className="h-5 w-5" /></button>
+    <div className="flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
+      <div className="relative" ref={menuRef}>
+        <button
+          className="h-8 w-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+          onClick={() => setIsMenuOpen((prev) => !prev)}
+          title="Actions"
+        >
+          <MoreVertical className="h-5 w-5" />
+        </button>
+
+        {isMenuOpen && (
+          <div className="absolute right-0 mt-1 w-48 bg-white rounded-xl shadow-lg border border-slate-100 py-1 z-30">
+            {items.map((item) => (
+              <button
+                key={item.key}
+                className={menuItemCls}
+                disabled={item.disabled}
+                onClick={() => { item.onClick(); setIsMenuOpen(false); }}
+              >
+                <item.icon className="h-4 w-4 text-slate-400" />
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {isVersionModalOpen && (
+        <VersionHistoryModal
+          documentId={document.id}
+          onClose={() => setIsVersionModalOpen(false)}
+          onOpenVersion={onView}
+        />
       )}
-      {extra}
     </div>
   );
 }
@@ -150,7 +244,7 @@ function DocumentTableRow({ document, currentUser, isChecked, onCheck, onOpen })
       className={`cursor-pointer border-b border-slate-100 last:border-b-0 transition-colors ${isDeclined ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-slate-50'
         }`}
     >
-      <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
         <input
           type="checkbox"
           checked={isChecked}
@@ -158,9 +252,9 @@ function DocumentTableRow({ document, currentUser, isChecked, onCheck, onOpen })
           className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
         />
       </td>
-      <td className="px-3 py-3">
+      <td className="px-3 py-2">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="h-9 w-9 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+          <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
             <FileSignature className="h-4 w-4 text-slate-500" />
           </div>
           <div className="min-w-0">
@@ -178,7 +272,7 @@ function DocumentTableRow({ document, currentUser, isChecked, onCheck, onOpen })
           </div>
         </div>
       </td>
-      <td className="px-3 py-3">
+      <td className="px-3 py-2">
         <div className="flex items-center gap-1.5 min-w-0">
           <div className="h-6 w-6 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">
             {generateInitials(document.initiatorName)}
@@ -188,19 +282,19 @@ function DocumentTableRow({ document, currentUser, isChecked, onCheck, onOpen })
           </span>
         </div>
       </td>
-      <td className="px-3 py-3 text-xs text-slate-500 whitespace-nowrap">
+      <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">
         {new Date(document.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
       </td>
-      <td className="px-3 py-3">
+      <td className="px-3 py-2">
         <ProgressDots document={document} />
       </td>
-      <td className="px-3 py-3 min-w-0">
+      <td className="px-3 py-2 min-w-0">
         <PendingOnCell document={document} currentUser={currentUser} />
       </td>
-      <td className="px-3 py-3">
+      <td className="px-3 py-2">
         <StatusPill status={document.status} />
       </td>
-      <td className="px-3 py-3">
+      <td className="px-3 py-2">
         <RowActions document={document} onView={onOpen} />
       </td>
     </tr>
@@ -664,17 +758,17 @@ export default function Documents() {
               <table className="w-full text-left table-fixed">
                 <colgroup>
                   <col style={{ width: '3%' }} />
-                  <col style={{ width: '27%' }} />
+                  <col style={{ width: '32%' }} />
                   <col style={{ width: '13%' }} />
                   <col style={{ width: '8%' }} />
                   <col style={{ width: '9%' }} />
-                  <col style={{ width: '14%' }} />
+                  <col style={{ width: '17%' }} />
                   <col style={{ width: '13%' }} />
-                  <col style={{ width: '13%' }} />
+                  <col style={{ width: '5%' }} />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-slate-200">
-                    <th className="px-3 py-2">
+                    <th className="px-3 py-1.5">
                       <input
                         type="checkbox"
                         checked={checkedIds.size > 0 && checkedIds.size === filteredDocuments.length}
@@ -682,13 +776,13 @@ export default function Documents() {
                         className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
                       />
                     </th>
-                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Document</th>
-                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Initiator</th>
-                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Date</th>
-                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Progress</th>
-                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Pending on</th>
-                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Status</th>
-                    <th className="px-3 py-2"></th>
+                    <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Document</th>
+                    <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Initiator</th>
+                    <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Date</th>
+                    <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Progress</th>
+                    <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Pending on</th>
+                    <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Status</th>
+                    <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Action</th>
                   </tr>
                 </thead>
                 <tbody>
