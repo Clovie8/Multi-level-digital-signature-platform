@@ -3,9 +3,11 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../lib/api';
 import toast from 'react-hot-toast';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { PenTool, CheckCircle, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { PenTool, CheckCircle, ChevronLeft, ChevronRight, X, Upload } from 'lucide-react';
 import SignatureCanvas from 'react-signature-canvas';
 import { Rnd } from 'react-rnd';
+import ReactCrop from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css'
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -42,6 +44,18 @@ export default function Sign() {
   const padContainerRef = useRef(null);
   const [signMode, setSignMode] = useState('draw'); // 'draw' or 'type'
   const [padSize, setPadSize] = useState({ width: 450, height: 160 });
+
+  // Image Upload & Cropping State
+  const [uploadedImage, setUploadedImage] = useState(null);
+  const [crop, setCrop] = useState();
+  const [completedCrop, setCompletedCrop] = useState(null);
+  const imgRef = useRef(null);
+  const [saveForFuture, setSaveForFuture] = useState(false);
+  const [isAdopting, setIsAdopting] = useState(false); // Used for upload loading state
+  const [savedSignatures, setSavedSignatures] = useState([]);
+  const [selectedSavedSignature, setSelectedSavedSignature] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   // Track which fields have been completed
   const [completedFields, setCompletedFields] = useState({});
@@ -84,6 +98,7 @@ export default function Sign() {
         setDocumentFile(res.data.pdfUrl); // The R2 URL or Blob
         setSignerInfo(res.data.signer);
         setFields(res.data.fields || []);
+        setSavedSignatures(res.data.savedSignatures || []);
 
       } catch (error) {
         console.error('Failed to load document:', error);
@@ -123,28 +138,143 @@ export default function Sign() {
   };
 
   // 3. Adopt Signature and Apply to Field
-  const handleAdoptSignature = () => {
+  const handleAdoptSignature = async () => {
     try {
       if (signMode === 'draw') {
-        if (!sigPadRef.current || sigPadRef.current.isEmpty()) {
-          toast.error('Please draw your signature, or switch to the Type tab.');
-          return;
-        }
-        // Capture the drawing as a Base64 PNG (using getCanvas to avoid getTrimmedCanvas bounds errors)
+        if (!sigPadRef.current || sigPadRef.current.isEmpty()) return toast.error('Please draw your signature.');
         const drawnDataURL = sigPadRef.current.getCanvas().toDataURL('image/png');
         setCompletedFields(prev => ({ ...prev, [activeFieldId]: drawnDataURL }));
-      } else {
-        if (!signatureText.trim()) {
-          toast.error('Please enter your text/name.');
-          return;
-        }
-        // Prefix typed text so the backend knows how to handle it
+        setIsModalOpen(false);
+
+      } else if (signMode === 'type') {
+        if (!signatureText.trim()) return toast.error('Please enter your text/name.');
         setCompletedFields(prev => ({ ...prev, [activeFieldId]: `TYPED::${signatureText}` }));
+        setIsModalOpen(false);
+
+      } else if (signMode === 'upload') {
+        if (!completedCrop || !imgRef.current) return toast.error('Please crop your uploaded signature.');
+        setIsAdopting(true);
+
+        // 1. Client-Side Cropping & Transparency Filter
+        const image = imgRef.current;
+        const canvas = document.createElement('canvas');
+        const scaleX = image.naturalWidth / image.width;
+        const scaleY = image.naturalHeight / image.height;
+        canvas.width = completedCrop.width;
+        canvas.height = completedCrop.height;
+        const ctx = canvas.getContext('2d');
+
+        // Draw cropped area
+        ctx.drawImage(
+          image,
+          completedCrop.x * scaleX,
+          completedCrop.y * scaleY,
+          completedCrop.width * scaleX,
+          completedCrop.height * scaleY,
+          0, 0, completedCrop.width, completedCrop.height
+        );
+
+        // Process transparency (convert white background to transparent)
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imgData.data;
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i], g = data[i+1], b = data[i+2];
+          if (r > 200 && g > 200 && b > 200) { 
+            data[i+3] = 0; // Set alpha to 0 (transparent) for white pixels
+          }
+        }
+        ctx.putImageData(imgData, 0, 0);
+
+        // 2. Convert to Blob & Upload to Phase 2 Endpoint
+        const processedBase64 = canvas.toDataURL('image/png');
+        const processedBlob = await (await fetch(processedBase64)).blob();
+        
+        const formData = new FormData();
+        formData.append('signatureImage', processedBlob, 'signature.png');
+        formData.append('signerName', signerInfo?.name || 'Guest Signer');
+        formData.append('signerEmail', signerInfo?.email || 'guest@example.com');
+        formData.append('saveForFuture', saveForFuture); 
+
+        const uploadRes = await api.post('/api/signatures/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+
+        // 3. Save Base64 for instant UI preview, and inject R2 URL into the payload for the backend
+        setFields(fields.map(f => f.id === activeFieldId ? { ...f, imageUrl: uploadRes.data.signature.signature_url } : f));
+        setCompletedFields(prev => ({ ...prev, [activeFieldId]: processedBase64 }));
+        
+        setIsModalOpen(false);
+        setUploadedImage(null); // Reset for next time
+
+      } else if (signMode === 'saved') {
+        if (!selectedSavedSignature) return toast.error('Please select a saved signature.');
+        
+        setIsAdopting(true);
+        try {
+            // Fetch the image from the secure URL and convert it to Base64 for the PDF stamper
+            const response = await fetch(selectedSavedSignature.displayUrl, { 
+                mode: 'cors',
+                cache: 'no-cache' 
+            });
+            const blob = await response.blob();
+            const reader = new FileReader();
+            
+            reader.onloadend = () => {
+                // Inject the actual Base64 image data so the PDF stamper can see it
+                setFields(fields.map(f => f.id === activeFieldId ? { ...f, imageUrl: selectedSavedSignature.originalKey } : f));
+                setCompletedFields(prev => ({ ...prev, [activeFieldId]: reader.result }));
+                
+                setIsModalOpen(false);
+                setIsAdopting(false);
+            };
+            
+            reader.readAsDataURL(blob);
+        } catch (error) {
+            console.error("Failed to load saved image for stamping:", error);
+            toast.error("Failed to load the saved signature.");
+            setIsAdopting(false);
+        }
       }
-      setIsModalOpen(false);
     } catch (err) {
       console.error("Error adopting signature:", err);
       toast.error(`Failed to capture signature: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsAdopting(false);
+    }
+  };
+
+  const handleImageUpload = (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const reader = new FileReader();
+      reader.addEventListener('load', () => setUploadedImage(reader.result));
+      reader.readAsDataURL(e.target.files[0]);
+    }
+  };
+
+  const handleDeleteSignature = async (e, id) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    setDeletingId(id); 
+    try {
+      await api.delete(`/api/signatures/${id}`);
+      
+      const remainingSignatures = savedSignatures.filter(sig => sig.id !== id);
+      setSavedSignatures(remainingSignatures);
+      
+      if (selectedSavedSignature?.id === id) setSelectedSavedSignature(null);
+      setConfirmDeleteId(null); 
+      
+      if (remainingSignatures.length === 0) {
+        setSignMode('upload');
+      }
+
+      toast.success('Signature removed.');
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to remove signature.');
+    } finally {
+      setDeletingId(null); 
     }
   };
 
@@ -356,7 +486,7 @@ export default function Sign() {
             </div>
 
             <div className="p-6">
-              {/* Toggle Draw / Type */}
+              {/* Toggle Draw / Type / Upload */}
               <div className="flex space-x-4 mb-4 border-b border-slate-200 pb-2">
                 <button
                   onClick={() => setSignMode('draw')}
@@ -370,10 +500,25 @@ export default function Sign() {
                 >
                   Type
                 </button>
+                <button
+                  onClick={() => setSignMode('upload')}
+                  className={`pb-2 text-sm font-medium transition-colors ${signMode === 'upload' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-900'}`}
+                >
+                  Upload
+                </button>
+
+                {savedSignatures.length > 0 && (
+                  <button
+                    onClick={() => setSignMode('saved')}
+                    className={`pb-2 text-sm font-medium transition-colors ${signMode === 'saved' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-900'}`}
+                  >
+                    Saved
+                  </button>
+                )}
               </div>
 
               {/* The Input Areas */}
-              {signMode === 'draw' ? (
+              {signMode === 'draw' && (
                 <div ref={padContainerRef} className="w-full h-40 border border-slate-300 rounded-lg bg-slate-50 relative">
                   <SignatureCanvas
                     ref={sigPadRef}
@@ -391,7 +536,9 @@ export default function Sign() {
                     Clear
                   </button>
                 </div>
-              ) : (
+              )}
+
+              {signMode === 'type' && (
                 <div>
                   <input
                     type="text"
@@ -408,13 +555,134 @@ export default function Sign() {
                 </div>
               )}
 
-              <p className="text-xs text-slate-500 text-center mt-6 mb-6">By adopting this signature, you agree that it is a legally binding electronic representation of your signature.</p>
+              {signMode === 'upload' && (
+                <div className="w-full border-2 border-dashed border-slate-300 rounded-lg bg-slate-50 flex flex-col items-center justify-center min-h-[160px] p-4 relative">
+                  {!uploadedImage ? (
+                    <>
+                      <Upload className="h-8 w-8 text-slate-400 mb-2" />
+                      <p className="text-sm text-slate-600 font-medium">Upload a photo of your signature</p>
+                      <p className="text-xs text-slate-400 mb-4">Accepts .jpg and .png</p>
+                      <input 
+                        type="file" 
+                        accept="image/png, image/jpeg, image/jpg" 
+                        onChange={handleImageUpload}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                      <button className="px-4 py-2 bg-white border border-slate-200 rounded shadow-sm text-sm font-medium hover:bg-slate-50 transition-colors">
+                        Browse Files
+                      </button>
+                    </>
+                  ) : (
+                    <div className="w-full flex flex-col items-center">
+                      <p className="text-xs text-slate-500 mb-2 w-full text-left font-medium">Drag the corners to crop your signature tightly:</p>
+                      <ReactCrop 
+                        crop={crop} 
+                        onChange={c => setCrop(c)} 
+                        onComplete={c => setCompletedCrop(c)}
+                        className="max-h-[250px] rounded border border-slate-200"
+                      >
+                        <img ref={imgRef} src={uploadedImage} alt="Crop preview" className="max-h-[250px] object-contain" />
+                      </ReactCrop>
+                      <button 
+                        onClick={() => setUploadedImage(null)} 
+                        className="mt-3 text-xs text-red-500 hover:text-red-700 font-medium"
+                      >
+                        Remove Image
+                      </button>
+                    </div>
+                  )}
+
+                  {uploadedImage && (
+                    <div className="w-full flex items-center mt-4 bg-blue-50 border border-blue-100 p-3 rounded-lg">
+                      <input
+                        id="saveSignature"
+                        type="checkbox"
+                        checked={saveForFuture}
+                        onChange={(e) => setSaveForFuture(e.target.checked)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-300 rounded cursor-pointer"
+                      />
+                      <label htmlFor="saveSignature" className="ml-2 block text-sm text-blue-900 font-medium cursor-pointer">
+                        Save this signature for future use.
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {signMode === 'saved' && (
+                <div className="w-full border border-slate-300 rounded-lg bg-slate-50 p-4 min-h-[160px]">
+                  <p className="text-sm font-medium text-slate-700 mb-3">Select a saved signature:</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    {savedSignatures.map((sig, index) => (
+                      <div 
+                        key={index}
+                        onClick={() => {
+                          // Prevent selecting the signature if they are in the middle of deleting it
+                          if (confirmDeleteId !== sig.id) setSelectedSavedSignature(sig);
+                        }}
+                        className={`cursor-pointer border-2 rounded-lg flex flex-col overflow-hidden bg-white transition-all ${
+                          selectedSavedSignature?.id === sig.id ? 'border-blue-600 ring-2 ring-blue-100' : 'border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        {confirmDeleteId === sig.id ? (
+                          /* INLINE CONFIRMATION STATE */
+                          <div className="flex flex-col h-full bg-red-50 justify-center items-center p-3 text-center animate-in fade-in duration-200">
+                            <p className="text-sm font-bold text-red-800 mb-1">Delete signature?</p>
+                            <p className="text-[10px] text-red-600 mb-3 leading-tight">This will permanently remove it from your account.</p>
+                            <div className="flex space-x-2 w-full mt-auto">
+                              <button 
+                                type="button"
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmDeleteId(null); }}
+                                className="flex-1 py-1.5 bg-white border border-slate-200 text-slate-600 rounded text-xs font-medium hover:bg-slate-50 transition-colors shadow-sm"
+                              >
+                                Cancel
+                              </button>
+                              <button 
+                                type="button"
+                                onClick={(e) => handleDeleteSignature(e, sig.id)}
+                                disabled={deletingId === sig.id}
+                                className="flex-1 py-1.5 bg-red-600 text-white rounded text-xs font-medium hover:bg-red-700 transition-colors shadow-sm disabled:opacity-50"
+                              >
+                                {deletingId === sig.id ? 'Removing...' : 'Confirm'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          /* NORMAL CARD STATE */
+                          <>
+                            <div className="h-24 p-2 flex items-center justify-center bg-slate-50 border-b border-slate-100">
+                              <img 
+                                crossOrigin="anonymous"
+                                src={sig.displayUrl} 
+                                alt="Saved Signature" 
+                                className="max-h-full max-w-full object-contain pointer-events-none" 
+                              />
+                            </div>
+                            
+                            <button 
+                              type="button"
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmDeleteId(sig.id); }}
+                              className="w-full py-2 flex items-center justify-center text-xs font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors"
+                            >
+                              Remove <X className="h-3.5 w-3.5 ml-1" strokeWidth={2.5} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+
+              <p className="text-xs text-slate-500 text-center mt-4 mb-4">By adopting this signature, you agree that it is a legally binding electronic representation of your signature.</p>
 
               <button
                 onClick={handleAdoptSignature}
+                disabled={isAdopting}
                 className="w-full py-3 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
               >
-                Adopt and Sign
+                {isAdopting ? 'Processing...' : 'Adopt and Sign'}
               </button>
             </div>
           </div>
