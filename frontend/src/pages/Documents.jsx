@@ -27,7 +27,7 @@ const generateInitials = (name) => {
 };
 
 function StatusPill({ status }) {
-  const meta = STATUS_META[status] || STATUS_META.pending;
+  const meta = STATUS_META[status] || { label: status || 'Unknown', dot: 'bg-slate-400', text: 'text-slate-600', bg: 'bg-slate-100' };
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${meta.bg} ${meta.text}`}>
       <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
@@ -138,13 +138,16 @@ function VersionHistoryModal({ documentId, onClose, onOpenVersion }) {
   );
 }
 
-function RowActions({ document, onView }) {
+function RowActions({ document, onView, onVoided }) {
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [openUpward, setOpenUpward] = useState(false);
   const [isSendingReminder, setIsSendingReminder] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isVoiding, setIsVoiding] = useState(false);
   const [isVersionModalOpen, setIsVersionModalOpen] = useState(false);
   const menuRef = useRef(null);
+  const buttonRef = useRef(null);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -155,6 +158,14 @@ function RowActions({ document, onView }) {
     window.document.addEventListener('mousedown', handleClickOutside);
     return () => window.document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const toggleMenu = () => {
+    if (!isMenuOpen && buttonRef.current) {
+      const spaceBelow = window.innerHeight - buttonRef.current.getBoundingClientRect().bottom;
+      setOpenUpward(spaceBelow < 240);
+    }
+    setIsMenuOpen((prev) => !prev);
+  };
 
   const handleSendReminder = async () => {
     setIsSendingReminder(true);
@@ -180,7 +191,30 @@ function RowActions({ document, onView }) {
     }
   };
 
+  const isDraft = document.status === 'draft';
+
+  const handleVoid = async () => {
+    const confirmMessage = isDraft
+      ? `Delete "${document.fileName}"? This permanently removes it — it will not show up anywhere and cannot be recovered.`
+      : `Void "${document.fileName}"? This cannot be undone, and any remaining signers will be notified.`;
+    if (!window.confirm(confirmMessage)) return;
+
+    setIsVoiding(true);
+    try {
+      const res = await api.post(`/api/documents/${document.id}/void`);
+      toast.success(res.data.message);
+      onVoided?.();
+    } catch (err) {
+      toast.error(err.response?.data?.error || `Could not ${isDraft ? 'delete' : 'void'} this document.`);
+    } finally {
+      setIsVoiding(false);
+    }
+  };
+
   const menuItemCls = "w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
+  const dangerMenuItemCls = "w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
+
+  const VOIDABLE_STATUSES = ['draft', 'pending', 'in_progress', 'declined'];
 
   const items = [];
   if (document.status === 'draft') {
@@ -195,28 +229,33 @@ function RowActions({ document, onView }) {
     items.push({ key: 'download', label: isDownloading ? 'Downloading…' : 'Download', icon: Download, onClick: handleDownload, disabled: isDownloading });
   }
   items.push({ key: 'versions', label: 'Version history', icon: History, onClick: () => setIsVersionModalOpen(true) });
+  if (VOIDABLE_STATUSES.includes(document.status)) {
+    const voidLabel = isVoiding ? (isDraft ? 'Deleting…' : 'Voiding…') : (isDraft ? 'Delete' : 'Void');
+    items.push({ key: 'void', label: voidLabel, icon: Ban, onClick: handleVoid, disabled: isVoiding, danger: true });
+  }
 
   return (
     <div className="flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
       <div className="relative" ref={menuRef}>
         <button
+          ref={buttonRef}
           className="h-8 w-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-          onClick={() => setIsMenuOpen((prev) => !prev)}
+          onClick={toggleMenu}
           title="Actions"
         >
           <MoreVertical className="h-5 w-5" />
         </button>
 
         {isMenuOpen && (
-          <div className="absolute right-0 mt-1 w-48 bg-white rounded-xl shadow-lg border border-slate-100 py-1 z-30">
+          <div className={`absolute right-0 w-48 bg-white rounded-xl shadow-lg border border-slate-100 py-1 z-30 ${openUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
             {items.map((item) => (
               <button
                 key={item.key}
-                className={menuItemCls}
+                className={item.danger ? dangerMenuItemCls : menuItemCls}
                 disabled={item.disabled}
                 onClick={() => { item.onClick(); setIsMenuOpen(false); }}
               >
-                <item.icon className="h-4 w-4 text-slate-400" />
+                <item.icon className={`h-4 w-4 ${item.danger ? 'text-red-400' : 'text-slate-400'}`} />
                 {item.label}
               </button>
             ))}
@@ -235,7 +274,7 @@ function RowActions({ document, onView }) {
   );
 }
 
-function DocumentTableRow({ document, currentUser, isChecked, onCheck, onOpen }) {
+function DocumentTableRow({ document, currentUser, isChecked, onCheck, onOpen, onVoided }) {
   const isDeclined = document.status === 'declined';
 
   return (
@@ -295,7 +334,7 @@ function DocumentTableRow({ document, currentUser, isChecked, onCheck, onOpen })
         <StatusPill status={document.status} />
       </td>
       <td className="px-3 py-2">
-        <RowActions document={document} onView={onOpen} />
+        <RowActions document={document} onView={onOpen} onVoided={onVoided} />
       </td>
     </tr>
   );
@@ -423,10 +462,11 @@ function DeclineResolutionPanel({ document, onRefresh }) {
   };
 
   const handleVoid = async () => {
+    if (!window.confirm(`Void "${document.fileName}"? This cannot be undone, and any remaining signers will be notified.`)) return;
     setIsVoiding(true);
     try {
-      await api.post(`/api/documents/${document.id}/void`);
-      toast.success('Document voided.');
+      const res = await api.post(`/api/documents/${document.id}/void`);
+      toast.success(res.data.message);
       onRefresh();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not void this document.');
@@ -654,6 +694,13 @@ export default function Documents() {
 
   const handleBulkComingSoon = () => toast('Bulk actions are coming soon.');
 
+  const checkedDocuments = useMemo(
+    () => documents.filter((d) => checkedIds.has(d.id)),
+    [documents, checkedIds]
+  );
+  const canBulkDownload = checkedDocuments.length > 0 && checkedDocuments.every((d) => d.status === 'completed');
+  const canBulkRemind = checkedDocuments.length > 0 && checkedDocuments.every((d) => ['pending', 'in_progress'].includes(d.status));
+
   return (
     <div className="min-h-full bg-white">
       <div className="max-w-[1400px] mx-auto px-6 py-8">
@@ -725,12 +772,16 @@ export default function Documents() {
         {checkedIds.size > 0 && (
           <div className="flex items-center gap-4 bg-slate-900 text-white text-sm font-medium rounded-lg px-4 py-2.5 mb-4">
             <span>{checkedIds.size} selected</span>
-            <button onClick={handleBulkComingSoon} className="text-white/80 hover:text-white transition-colors">
-              Download
-            </button>
-            <button onClick={handleBulkComingSoon} className="text-white/80 hover:text-white transition-colors">
-              Send reminder
-            </button>
+            {canBulkDownload && (
+              <button onClick={handleBulkComingSoon} className="text-white/80 hover:text-white transition-colors">
+                Download
+              </button>
+            )}
+            {canBulkRemind && (
+              <button onClick={handleBulkComingSoon} className="text-white/80 hover:text-white transition-colors">
+                Send reminder
+              </button>
+            )}
             <button onClick={clearChecked} className="ml-auto text-white/60 hover:text-white transition-colors">
               Clear
             </button>
@@ -794,6 +845,7 @@ export default function Documents() {
                       isChecked={checkedIds.has(document.id)}
                       onCheck={toggleCheck}
                       onOpen={handleSelect}
+                      onVoided={handleRefresh}
                     />
                   ))}
                 </tbody>
