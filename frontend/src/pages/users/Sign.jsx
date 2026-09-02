@@ -494,49 +494,53 @@ export default function Sign() {
       <main className="flex-1 overflow-auto bg-slate-200/50 flex flex-col relative py-8">
 
          {/* --- FLOATING ACTION GUIDE --- */}
-        {Object.keys(fieldsByPage).length > 0 && (
           <div className="lg:absolute lg:left-6 lg:top-8 w-[90%] max-w-sm lg:w-56 mx-auto lg:mx-0 bg-white border border-slate-200 rounded-lg shadow-md lg:shadow-lg z-20 overflow-hidden animate-in fade-in slide-in-from-left-4 mb-6 lg:mb-0 shrink-0">
-            
             <div className="bg-slate-900 text-white px-4 py-3 text-sm font-semibold flex items-center justify-between">
               Action Required
-              <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-                {pendingFields.length} left
-              </span>
+              {pendingFields.length > 0 && (
+                <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                  {pendingFields.length} left
+                </span>
+              )}
             </div>
             
             <div className="max-h-[30vh] lg:max-h-[60vh] overflow-y-auto p-2 bg-slate-50 space-y-2">
-              {Object.entries(fieldsByPage).map(([pageStr, fieldTypes]) => {
-                const pageNum = parseInt(pageStr);
-                return (
-                  <div 
-                    key={pageNum} 
-                    onClick={() => setCurrentPage(pageNum)}
-                    className={`cursor-pointer p-1.5 border rounded-lg transition-all ${
-                      currentPage === pageNum 
-                        ? 'bg-blue-50 border-blue-300 shadow-sm' 
-                        : 'bg-white border-slate-200 hover:border-slate-400'
-                    }`}
-                  >
-                    <p className={`text-sm font-bold ${currentPage === pageNum ? 'text-blue-600' : 'text-slate-800'}`}>
-                      Page {pageNum}
-                    </p>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Needs: {fieldTypes.map((type, index) => (
-                        <span key={index}>
-                          <span className={type === 'Initial (All Pages)' ? 'font-semibold text-slate-800' : ''}>
-                            {type}
+              {pendingFields.length === 0 ? (
+                <div className="text-sm text-green-600 font-medium flex items-center bg-green-50 p-3 rounded-md border border-green-200">
+                  <CheckCircle className="h-5 w-5 mr-2 text-green-500" /> All fields complete!
+                </div>
+              ) : (
+                Object.entries(fieldsByPage).map(([pageStr, fieldTypes]) => {
+                  const pageNum = parseInt(pageStr);
+                  return (
+                    <div 
+                      key={pageNum} 
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`cursor-pointer p-1.5 border rounded-lg transition-all ${
+                        currentPage === pageNum 
+                          ? 'bg-blue-50 border-blue-300 shadow-sm' 
+                          : 'bg-white border-slate-200 hover:border-slate-400'
+                      }`}
+                    >
+                      <p className={`text-sm font-bold ${currentPage === pageNum ? 'text-blue-600' : 'text-slate-800'}`}>
+                        Page {pageNum}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Needs: {fieldTypes.map((type, index) => (
+                          <span key={index}>
+                            <span className={type === 'Initial (All Pages)' ? 'font-semibold text-slate-800' : ''}>
+                              {type}
+                            </span>
+                            {index < fieldTypes.length - 1 ? ', ' : ''}
                           </span>
-                          {/* Add a comma after the item unless it's the last one */}
-                          {index < fieldTypes.length - 1 ? ', ' : ''}
-                        </span>
-                      ))}
-                    </p>
-                  </div>
-                )
-              })}
+                        ))}
+                      </p>
+                    </div>
+                  )
+                })
+              )}
             </div>
           </div>
-        )}
 
         {/* Pagination Controls */}
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white px-4 py-2 rounded-full shadow-lg border border-slate-200 flex items-center space-x-4 z-20">
@@ -545,62 +549,7 @@ export default function Sign() {
           <button onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))} disabled={currentPage >= totalPages} className="text-slate-400 hover:text-slate-900 disabled:opacity-50"><ChevronRight className="h-5 w-5" /></button>
         </div>
 
-        {/* Action Guide Sidebar */}
-        <div className="absolute left-6 top-6 bg-white rounded-lg shadow-lg border border-slate-200 w-64 p-4 z-20 hidden lg:block">
-          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4 flex items-center">
-            <CheckCircle className="h-4 w-4 mr-2 text-blue-600" /> Action Guide
-          </h3>
-          <div className="space-y-3">
-            {(() => {
-              const pendingFields = fields.filter(f => !completedFields[f.id]);
-              if (pendingFields.length === 0) {
-                return (
-                  <div className="text-sm text-green-600 font-medium flex items-center bg-green-50 p-3 rounded-md">
-                    <CheckCircle className="h-5 w-5 mr-2" /> All fields complete!
-                  </div>
-                );
-              }
 
-              const displayPending = [];
-              const initialsAdded = new Set();
-              pendingFields.forEach(f => {
-                if (f.type === 'Initial') {
-                  if (!initialsAdded.has(f.signerId)) {
-                    displayPending.push({ ...f, page: 'All Pages', isInitialGroup: true });
-                    initialsAdded.add(f.signerId);
-                  }
-                } else {
-                  displayPending.push(f);
-                }
-              });
-
-              displayPending.sort((a, b) => {
-                if (a.isInitialGroup && !b.isInitialGroup) return -1;
-                if (!a.isInitialGroup && b.isInitialGroup) return 1;
-                return a.page - b.page;
-              });
-
-              return displayPending.map((pf, idx) => (
-                <div 
-                  key={idx} 
-                  onClick={() => {
-                    if (pf.page !== 'All Pages') setCurrentPage(pf.page);
-                  }}
-                  className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100 hover:border-blue-300 hover:bg-blue-50 cursor-pointer transition-colors"
-                >
-                  <span className={`text-xs ${pf.isInitialGroup ? 'font-semibold text-slate-800' : 'text-slate-600 font-medium'}`}>
-                    {pf.isInitialGroup ? 'Initial (All Pages)' : pf.type}
-                  </span>
-                  {!pf.isInitialGroup && (
-                    <span className="text-[10px] font-bold px-2 py-1 bg-white rounded shadow-sm text-slate-500 border border-slate-200">
-                      Pg {pf.page}
-                    </span>
-                  )}
-                </div>
-              ));
-            })()}
-          </div>
-        </div>
 
         {/* The PDF Container */}
         <div 

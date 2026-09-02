@@ -521,16 +521,7 @@ export default function Upload() {
                     </div>
 
                   </div>
-                  <div className="w-full sm:w-auto flex items-center mt-2 sm:mt-0">
-                    <input
-                      type="checkbox"
-                      id={`receive-copy-${index}`}
-                      checked={signer.receivesFinalCopy !== false}
-                      onChange={(e) => handleSignerChange(index, 'receivesFinalCopy', e.target.checked)}
-                      className="h-4 w-4 text-slate-900 border-slate-300 rounded cursor-pointer"
-                    />
-                    <label htmlFor={`receive-copy-${index}`} className="ml-2 text-xs text-slate-600 font-medium">Final Copy</label>
-                  </div>
+
                   {index > 0 && (
                     <button onClick={() => removeSigner(index)} className="absolute -right-2 -top-2 sm:static sm:mt-2 text-slate-400 hover:text-red-500 transition-colors">
                       <Trash2 className="h-5 w-5" />
