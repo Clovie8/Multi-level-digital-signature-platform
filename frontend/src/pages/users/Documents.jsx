@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from '../lib/api';
+import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import {
   FileSignature, RotateCcw, Layers, Ban, Clock, CheckCircle2,
@@ -572,7 +572,7 @@ export default function Documents() {
             </p>
           </div>
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/upload')}
             className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 text-white text-sm font-semibold rounded-md hover:bg-slate-800 transition-colors"
           >
             <Plus className="h-4 w-4" />

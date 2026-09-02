@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from '../lib/api';
+import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import {UploadCloud, Users, FileSignature, CheckCircle, Plus, Trash2,
 ArrowRight,PenTool, Calendar, Type, UserSquare, ChevronLeft, ChevronRight, Search, Send, X

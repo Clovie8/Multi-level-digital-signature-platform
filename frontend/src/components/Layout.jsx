@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, useNavigate, useLocation, useOutletContext, Link } from 'react-router-dom';
-import { PenTool, Menu, X, Home, FileSignature, Settings, LogOut, User, ChevronDown, ChevronLeft, ChevronRight,UploadCloud } from 'lucide-react';
+import { PenTool, Menu, X, Home, FileSignature, Settings, LogOut, User, ChevronDown, ChevronLeft, ChevronRight, UploadCloud, ShieldCheck, ScrollText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
 
@@ -29,7 +29,7 @@ export default function Layout() {
     name: user?.name || 'User',
     email: user?.email || '',
     initials: generateInitials(user?.name),
-    role: 'User' // Placeholder until roles are added to schema
+    role: user?.role === 'admin' ? 'Admin' : 'User'
   };
 
   const handleSignOut = async () => {
@@ -62,11 +62,15 @@ export default function Layout() {
   }, []);
 
   const navigation = [
-    { name: 'Dashboard', href: '/', icon: Home },
+    ...(user?.role === 'admin' ? [
+      { name: 'Admin Dashboard', href: '/admin', icon: ShieldCheck },
+      
+    ...(user?.role !== 'admin' ? [{ name: 'Dashboard', href: '/', icon: Home }] : []),
     { name: 'Documents', href: '/documents', icon: FileSignature },
     { name: 'Upload', href: '/upload', icon: UploadCloud },
     { name: 'Settings', href: '/settings', icon: Settings },
-  
+    { name: 'Audit Logs', href: '/admin/audit-logs', icon: ScrollText },
+    ] : []),
   ];
 
   // Dynamically set the Header Title based on the current URL route
@@ -226,7 +230,7 @@ export default function Layout() {
 
         {/* Dynamic Page Content (This is where Dashboard.jsx renders) */}
         <main className="flex-1 overflow-y-auto bg-[#FAFAFA]">
-          <Outlet />
+          <Outlet context={{ user }} />
         </main>
 
       </div>

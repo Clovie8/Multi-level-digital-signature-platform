@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from '../lib/api';
+import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import { Mail, Lock, User, ArrowRight, Key, PenTool, Eye, EyeOff, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 
@@ -182,7 +182,6 @@ export default function Auth() {
 
 
   // API Handlers 
-
   const handleLogin = async (e) => {
     e.preventDefault();
     setIsLoading(true);
@@ -194,7 +193,12 @@ export default function Auth() {
       // JWT is now securely stored in an HttpOnly cookie automatically by the browser
       localStorage.setItem('isAuthenticated', 'true');
       toast.success('Welcome back to DSign.');
-      navigate('/');
+
+      if (res.data.user.role === 'admin') {
+        navigate('/admin');
+      } else {
+        navigate('/');
+      }
     } catch (err) {
       if (err.response?.data?.error === 'Account not verified. Please check your email.') {
         toast.error('Account not verified. A new code was sent to your email.');
