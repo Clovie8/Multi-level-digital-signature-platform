@@ -9,6 +9,7 @@ import Sign from './pages/Sign';
 import Layout from './components/Layout';
 import ProtectedRoute from './routes/ProtectedRoute';
 import Upload from './pages/Upload';
+import Review from './pages/Review';
 
 function App() {
   return (
@@ -34,6 +35,7 @@ function App() {
             <Route path="/documents" element={<Documents />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/upload" element={<Upload />} />
+            <Route path="/review/:id" element={<Review />} />
           </Route>
         </Route>
 
