@@ -72,7 +72,7 @@ export default function Upload() {
   // Signer Hierarchy State
   const [isInitiatorFirst, setIsInitiatorFirst] = useState(false);
   const [signers, setSigners] = useState([
-    { id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200' }
+    { id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200', receivesFinalCopy: true }
   ]);
 
   // Canvas State (Preparation Phase)
@@ -190,7 +190,8 @@ export default function Upload() {
       name: '',
       email: '',
       role: `Level ${newIndex + 1} Signer`,
-      color: signerColors[newIndex]
+      color: signerColors[newIndex],
+      receivesFinalCopy: true
     }]);
   };
 
@@ -236,6 +237,12 @@ export default function Upload() {
 
   // DISPATCH HANDLER
   const handleDispatchDocument = async () => {
+    // Validation: Check if every signer has at least one field assigned
+    const signersWithoutFields = signers.filter(s => !fields.some(f => f.signerId === s.id));
+    if (signersWithoutFields.length > 0) {
+      return toast.error(`Please assign at least one field to: ${signersWithoutFields.map(s => s.name || s.role).join(', ')}`);
+    }
+
     setIsLoading(true);
 
     try {
@@ -262,7 +269,7 @@ export default function Upload() {
         setFile(null);
         setDocumentId(null);
         setFields([]);
-        setSigners([{ id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200' }]);
+        setSigners([{ id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200', receivesFinalCopy: true }]);
       }
     } catch (error) {
       console.error(error);
@@ -290,35 +297,70 @@ export default function Upload() {
       (f) => f.type === fieldType && f.signerId === activeSignerId
     );
 
-    if (fieldAlreadyExists) {
-      toast.error(`You have already placed a ${fieldType} for this signer.`);
-      return;
+    if (fieldType === 'Initial') {
+      if (fieldAlreadyExists) {
+        toast.error(`You have already placed an Initial for this signer.`);
+        return;
+      }
+      
+      const bounds = e.currentTarget.getBoundingClientRect();
+      const x = e.clientX - bounds.left;
+      const y = e.clientY - bounds.top;
+      const xPct = (x / bounds.width) * 100;
+      const yPct = (y / bounds.height) * 100;
+
+      const newFields = [];
+      for (let i = 1; i <= totalPages; i++) {
+        newFields.push({
+          id: `field_${Date.now()}_${i}`,
+          type: fieldType,
+          signerId: activeSignerId,
+          page: i,
+          x: x,
+          y: y,
+          xPct: xPct,
+          yPct: yPct,
+          width: 100,
+          height: 35,
+          required: true
+        });
+      }
+      setFields([...fields, ...newFields]);
+      
+      const currentField = newFields.find(f => f.page === currentPage);
+      if (currentField) setSelectedFieldId(currentField.id);
+      toast.success('Initial placed on all pages.');
+    } else {
+      if (fieldAlreadyExists) {
+        toast.error(`You have already placed a ${fieldType} for this signer.`);
+        return;
+      }
+
+      // Calculate drop coordinates relative to the PDF container
+      const bounds = e.currentTarget.getBoundingClientRect();
+      const x = e.clientX - bounds.left;
+      const y = e.clientY - bounds.top;
+
+      const xPct = (x / bounds.width) * 100;
+      const yPct = (y / bounds.height) * 100;
+
+      const newField = {
+        id: `field_${Date.now()}`,
+        type: fieldType,
+        signerId: activeSignerId,
+        page: currentPage,
+        x: x,
+        y: y,
+        xPct: xPct,
+        yPct: yPct,
+        width: fieldType === 'Text Box' ? 150 : 100,
+        height: fieldType === 'Text Box' ? 30 : 35,
+        required: true
+      };
+
+      setFields([...fields, newField]);
+      setSelectedFieldId(newField.id); // Auto-select new field
     }
-
-    // Calculate drop coordinates relative to the PDF container
-    const bounds = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - bounds.left;
-    const y = e.clientY - bounds.top;
-
-    const xPct = (x / bounds.width) * 100;
-    const yPct = (y / bounds.height) * 100;
-
-    const newField = {
-      id: `field_${Date.now()}`,
-      type: fieldType,
-      signerId: activeSignerId,
-      page: currentPage,
-      x: x,
-      y: y,
-      xPct: xPct,
-      yPct: yPct,
-      width: fieldType === 'Text Box' ? 150 : 100,
-      height: fieldType === 'Text Box' ? 30 : 35,
-      required: true
-    };
-
-    setFields([...fields, newField]);
-    setSelectedFieldId(newField.id); // Auto-select new field
   };
 
   const updateFieldPosition = (id, newX, newY) => {
@@ -328,19 +370,39 @@ export default function Upload() {
     const xPct = (newX / bounds.width) * 100;
     const yPct = (newY / bounds.height) * 100;
 
-    setFields(prev => prev.map(f => f.id === id ? { ...f, x: newX, y: newY, xPct: xPct, yPct: yPct } : f));
+    const targetField = fields.find(f => f.id === id);
+    if (targetField && targetField.type === 'Initial') {
+      setFields(prev => prev.map(f => (f.type === 'Initial' && f.signerId === targetField.signerId) ? { ...f, x: newX, y: newY, xPct: xPct, yPct: yPct } : f));
+    } else {
+      setFields(prev => prev.map(f => f.id === id ? { ...f, x: newX, y: newY, xPct: xPct, yPct: yPct } : f));
+    }
   };
 
   const updateFieldSize = (id, width, height) => {
-    setFields(prev => prev.map(f => f.id === id ? { ...f, width, height } : f));
+    const targetField = fields.find(f => f.id === id);
+    if (targetField && targetField.type === 'Initial') {
+      setFields(prev => prev.map(f => (f.type === 'Initial' && f.signerId === targetField.signerId) ? { ...f, width, height } : f));
+    } else {
+      setFields(prev => prev.map(f => f.id === id ? { ...f, width, height } : f));
+    }
   };
 
   const updateFieldProperty = (id, property, value) => {
-    setFields(prev => prev.map(f => f.id === id ? { ...f, [property]: value } : f));
+    const targetField = fields.find(f => f.id === id);
+    if (targetField && targetField.type === 'Initial') {
+      setFields(prev => prev.map(f => (f.type === 'Initial' && f.signerId === targetField.signerId) ? { ...f, [property]: value } : f));
+    } else {
+      setFields(prev => prev.map(f => f.id === id ? { ...f, [property]: value } : f));
+    }
   };
 
   const deleteField = (id) => {
-    setFields(prev => prev.filter(f => f.id !== id));
+    const targetField = fields.find(f => f.id === id);
+    if (targetField && targetField.type === 'Initial') {
+      setFields(prev => prev.filter(f => !(f.type === 'Initial' && f.signerId === targetField.signerId)));
+    } else {
+      setFields(prev => prev.filter(f => f.id !== id));
+    }
   };
 
   const activeSigner = signers.find(s => s.id === activeSignerId) || signers[0];
@@ -442,6 +504,16 @@ export default function Upload() {
                       onChange={(e) => handleSignerChange(index, 'email', e.target.value)}
                       className="block w-full text-sm border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900 disabled:bg-slate-50 disabled:text-slate-500 py-2 px-3 border"
                     />
+                  </div>
+                  <div className="w-full sm:w-auto flex items-center mt-2 sm:mt-0">
+                    <input
+                      type="checkbox"
+                      id={`receive-copy-${index}`}
+                      checked={signer.receivesFinalCopy !== false}
+                      onChange={(e) => handleSignerChange(index, 'receivesFinalCopy', e.target.checked)}
+                      className="h-4 w-4 text-slate-900 border-slate-300 rounded cursor-pointer"
+                    />
+                    <label htmlFor={`receive-copy-${index}`} className="ml-2 text-xs text-slate-600 font-medium">Final Copy</label>
                   </div>
                   {index > 0 && (
                     <button onClick={() => removeSigner(index)} className="absolute -right-2 -top-2 sm:static sm:mt-2 text-slate-400 hover:text-red-500 transition-colors">

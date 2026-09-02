@@ -60,6 +60,9 @@ export default function Sign() {
   // Track which fields have been completed
   const [completedFields, setCompletedFields] = useState({});
 
+  const isResizing = useRef(false);
+  const [scale, setScale] = useState(1);
+
   // OTP Authentication State
   const [requiresOtp, setRequiresOtp] = useState(false);
 
@@ -117,6 +120,21 @@ export default function Sign() {
     setTotalPages(numPages);
   };
 
+  // Responsive scale logic
+  useEffect(() => {
+    const calculateScale = () => {
+      if (containerRef.current && containerRef.current.parentElement) {
+        const parentWidth = containerRef.current.parentElement.clientWidth;
+        // 750 is base width, subtract padding
+        const newScale = Math.min(1, (parentWidth - 48) / 750);
+        setScale(newScale);
+      }
+    };
+    window.addEventListener('resize', calculateScale);
+    calculateScale(); // initial calc
+    return () => window.removeEventListener('resize', calculateScale);
+  }, [documentFile]);
+
   // 2. Handle Opening the Signature Modal
   const handleFieldClick = (field) => {
     setActiveFieldId(field.id);
@@ -140,15 +158,42 @@ export default function Sign() {
   // 3. Adopt Signature and Apply to Field
   const handleAdoptSignature = async () => {
     try {
+      // Helper to apply signature to all initial fields if an Initial is active
+      const applyToFields = (dataToSave, imgUrlToSave = null) => {
+        const targetField = fields.find(f => f.id === activeFieldId);
+        
+        if (targetField && targetField.type === 'Initial') {
+          const updates = {};
+          let newFieldsState = fields;
+          
+          if (imgUrlToSave) {
+            newFieldsState = fields.map(f => 
+              (f.type === 'Initial' && f.signerId === targetField.signerId) ? { ...f, imageUrl: imgUrlToSave } : f
+            );
+            setFields(newFieldsState);
+          }
+          
+          newFieldsState.filter(f => f.type === 'Initial' && f.signerId === targetField.signerId).forEach(f => {
+             updates[f.id] = dataToSave;
+          });
+          setCompletedFields(prev => ({ ...prev, ...updates }));
+        } else {
+          if (imgUrlToSave) {
+             setFields(fields.map(f => f.id === activeFieldId ? { ...f, imageUrl: imgUrlToSave } : f));
+          }
+          setCompletedFields(prev => ({ ...prev, [activeFieldId]: dataToSave }));
+        }
+      };
+
       if (signMode === 'draw') {
         if (!sigPadRef.current || sigPadRef.current.isEmpty()) return toast.error('Please draw your signature.');
         const drawnDataURL = sigPadRef.current.getCanvas().toDataURL('image/png');
-        setCompletedFields(prev => ({ ...prev, [activeFieldId]: drawnDataURL }));
+        applyToFields(drawnDataURL);
         setIsModalOpen(false);
 
       } else if (signMode === 'type') {
         if (!signatureText.trim()) return toast.error('Please enter your text/name.');
-        setCompletedFields(prev => ({ ...prev, [activeFieldId]: `TYPED::${signatureText}` }));
+        applyToFields(`TYPED::${signatureText}`);
         setIsModalOpen(false);
 
       } else if (signMode === 'upload') {
@@ -200,8 +245,7 @@ export default function Sign() {
         });
 
         // 3. Save Base64 for instant UI preview, and inject R2 URL into the payload for the backend
-        setFields(fields.map(f => f.id === activeFieldId ? { ...f, imageUrl: uploadRes.data.signature.signature_url } : f));
-        setCompletedFields(prev => ({ ...prev, [activeFieldId]: processedBase64 }));
+        applyToFields(processedBase64, uploadRes.data.signature.signature_url);
         
         setIsModalOpen(false);
         setUploadedImage(null); // Reset for next time
@@ -221,8 +265,7 @@ export default function Sign() {
             
             reader.onloadend = () => {
                 // Inject the actual Base64 image data so the PDF stamper can see it
-                setFields(fields.map(f => f.id === activeFieldId ? { ...f, imageUrl: selectedSavedSignature.originalKey } : f));
-                setCompletedFields(prev => ({ ...prev, [activeFieldId]: reader.result }));
+                applyToFields(reader.result, selectedSavedSignature.originalKey);
                 
                 setIsModalOpen(false);
                 setIsAdopting(false);
@@ -412,8 +455,65 @@ export default function Sign() {
           <button onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))} disabled={currentPage >= totalPages} className="text-slate-400 hover:text-slate-900 disabled:opacity-50"><ChevronRight className="h-5 w-5" /></button>
         </div>
 
+        {/* Action Guide Sidebar */}
+        <div className="absolute left-6 top-6 bg-white rounded-lg shadow-lg border border-slate-200 w-64 p-4 z-20 hidden lg:block">
+          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4 flex items-center">
+            <CheckCircle className="h-4 w-4 mr-2 text-blue-600" /> Action Guide
+          </h3>
+          <div className="space-y-3">
+            {(() => {
+              const pendingFields = fields.filter(f => !completedFields[f.id]);
+              if (pendingFields.length === 0) {
+                return (
+                  <div className="text-sm text-green-600 font-medium flex items-center bg-green-50 p-3 rounded-md">
+                    <CheckCircle className="h-5 w-5 mr-2" /> All fields complete!
+                  </div>
+                );
+              }
+
+              const displayPending = [];
+              const initialsAdded = new Set();
+              pendingFields.forEach(f => {
+                if (f.type === 'Initial') {
+                  if (!initialsAdded.has(f.signerId)) {
+                    displayPending.push({ ...f, page: 'All Pages', isInitialGroup: true });
+                    initialsAdded.add(f.signerId);
+                  }
+                } else {
+                  displayPending.push(f);
+                }
+              });
+
+              displayPending.sort((a, b) => {
+                if (a.isInitialGroup && !b.isInitialGroup) return -1;
+                if (!a.isInitialGroup && b.isInitialGroup) return 1;
+                return a.page - b.page;
+              });
+
+              return displayPending.map((pf, idx) => (
+                <div 
+                  key={idx} 
+                  onClick={() => {
+                    if (pf.page !== 'All Pages') setCurrentPage(pf.page);
+                  }}
+                  className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100 hover:border-blue-300 hover:bg-blue-50 cursor-pointer transition-colors"
+                >
+                  <span className={`text-xs ${pf.isInitialGroup ? 'font-semibold text-slate-800' : 'text-slate-600 font-medium'}`}>
+                    {pf.isInitialGroup ? 'Initial (All Pages)' : pf.type}
+                  </span>
+                  {!pf.isInitialGroup && (
+                    <span className="text-[10px] font-bold px-2 py-1 bg-white rounded shadow-sm text-slate-500 border border-slate-200">
+                      Pg {pf.page}
+                    </span>
+                  )}
+                </div>
+              ));
+            })()}
+          </div>
+        </div>
+
         {/* The PDF Container */}
-        <div className="mx-auto relative shadow-xl border border-slate-200 bg-white" ref={containerRef}>
+        <div className="mx-auto relative shadow-xl border border-slate-200 bg-white origin-top" style={{ transform: `scale(${scale})`, width: 750 }} ref={containerRef}>
           <Document
             file={documentFile} // URL from backend
             onLoadSuccess={onDocumentLoadSuccess}
@@ -438,18 +538,20 @@ export default function Sign() {
                 size={{ width: field.width || 120, height: field.height || 40 }}
                 position={{ x: field.x || 0, y: field.y || 0 }}
                 disableDragging={true}
-                enableResizing={{ bottom: true, right: true, bottomRight: true }}
+                enableResizing={{ top: true, right: true, bottom: true, left: true, topRight: true, bottomRight: true, bottomLeft: true, topLeft: true }}
+                onResizeStart={() => { isResizing.current = true; }}
                 onResizeStop={(e, direction, ref, delta, position) => {
                   const newWidth = parseInt(ref.style.width);
                   const newHeight = parseInt(ref.style.height);
-                  setFields(fields.map(f => f.id === field.id ? { ...f, width: newWidth, height: newHeight } : f));
+                  setFields(fields.map(f => f.id === field.id ? { ...f, width: newWidth, height: newHeight, x: position.x, y: position.y } : f));
+                  setTimeout(() => { isResizing.current = false; }, 200);
                 }}
                 className={`absolute cursor-pointer border-2 rounded shadow-sm transition-colors flex items-center justify-center z-30 hover:shadow-md
                   ${isCompleted
                     ? 'bg-blue-50 border-blue-400 text-blue-900'
                     : 'bg-amber-100/90 border-amber-400 text-amber-800 animate-pulse hover:animate-none hover:bg-amber-200/90'
                   }`}
-                onClick={() => handleFieldClick(field)}
+                onClick={() => { if (!isResizing.current) handleFieldClick(field); }}
               >
                 {isCompleted ? (
                   <span className={`text-lg font-medium overflow-hidden max-h-full w-full flex items-center justify-center ${field.type === 'Signature' || field.type === 'Initial' ? 'font-[cursive]' : ''}`}>
@@ -461,8 +563,10 @@ export default function Sign() {
                   </span>
                 ) : (
                   <span className="text-xs font-bold uppercase tracking-wider flex items-center pointer-events-none">
-                    {field.type === 'Signature' || field.type === 'Initial' ? (
+                    {field.type === 'Signature' ? (
                       <><PenTool className="h-3 w-3 mr-1" /> Sign Here</>
+                    ) : field.type === 'Initial' ? (
+                      <><PenTool className="h-3 w-3 mr-1" /> Paraph Here</>
                     ) : (
                       field.type
                     )}
