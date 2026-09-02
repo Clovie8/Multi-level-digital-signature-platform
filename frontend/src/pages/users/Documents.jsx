@@ -5,13 +5,14 @@ import toast from 'react-hot-toast';
 import {
   FileSignature, RotateCcw, Layers, Ban, Clock, CheckCircle2,
   AlertTriangle, UploadCloud, X, Plus, Search,
-  Eye, Bell, Download, Pencil, History, MoreVertical
+  Eye, Bell, Download, Pencil, History, MoreVertical, Info
 } from 'lucide-react';
 
 const STATUS_META = {
   draft: { label: 'Draft', dot: 'bg-slate-400', text: 'text-slate-600', bg: 'bg-slate-100' },
   pending: { label: 'Pending', dot: 'bg-amber-500', text: 'text-amber-700', bg: 'bg-amber-50' },
   in_progress: { label: 'In progress', dot: 'bg-blue-500', text: 'text-blue-700', bg: 'bg-blue-50' },
+  pending_review: { label: 'Awaiting your review', dot: 'bg-teal-500', text: 'text-teal-700', bg: 'bg-teal-50' },
   completed: { label: 'Completed', dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50' },
   declined: { label: 'Declined', dot: 'bg-red-500', text: 'text-red-700', bg: 'bg-red-50' },
   superseded: { label: 'Superseded', dot: 'bg-purple-500', text: 'text-purple-700', bg: 'bg-purple-50' },
@@ -29,7 +30,7 @@ const generateInitials = (name) => {
 function StatusPill({ status }) {
   const meta = STATUS_META[status] || { label: status || 'Unknown', dot: 'bg-slate-400', text: 'text-slate-600', bg: 'bg-slate-100' };
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${meta.bg} ${meta.text}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0 ${meta.bg} ${meta.text}`}>
       <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
       {meta.label}
     </span>
@@ -61,6 +62,16 @@ function PendingOnCell({ document, currentUser }) {
           {currentUser?.initials || 'Y'}
         </div>
         <span className="text-xs font-semibold text-slate-900 truncate">You (decide)</span>
+      </div>
+    );
+  }
+  if (document.status === 'pending_review') {
+    return (
+      <div className="flex items-center gap-1.5 min-w-0">
+        <div className="h-6 w-6 rounded-full bg-teal-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+          {currentUser?.initials || 'Y'}
+        </div>
+        <span className="text-xs font-semibold text-slate-900 truncate">You (review)</span>
       </div>
     );
   }
@@ -214,7 +225,7 @@ function RowActions({ document, onView, onVoided }) {
   const menuItemCls = "w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
   const dangerMenuItemCls = "w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
 
-  const VOIDABLE_STATUSES = ['draft', 'pending', 'in_progress', 'declined'];
+  const VOIDABLE_STATUSES = ['draft', 'pending', 'in_progress', 'pending_review', 'declined'];
 
   const items = [];
   if (document.status === 'draft') {
@@ -433,6 +444,69 @@ function ReviseModal({ document, onClose, onSubmitted }) {
             {isSubmitting ? 'Creating…' : 'Create revision'}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ReviewPanel({ document, onRefresh }) {
+  const navigate = useNavigate();
+  const [isApproving, setIsApproving] = useState(false);
+
+  const handleApprove = async () => {
+    if (!window.confirm('Approve and finalize this document? It will be sealed and emailed to everyone.')) return;
+    setIsApproving(true);
+    try {
+      const res = await api.post(`/api/documents/${document.id}/approve`);
+      toast.success(res.data.message);
+      onRefresh();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not approve this document.');
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  const signerCount = document.steps.length;
+
+  return (
+    <div className="mt-5">
+      <StepsTimeline steps={document.steps} />
+
+      <div className="mt-5 border border-teal-200 bg-teal-50 rounded-xl p-4">
+        <div className="flex items-center gap-2.5 mb-2">
+          <div className="h-8 w-8 rounded-lg bg-white flex items-center justify-center text-teal-600 flex-shrink-0">
+            <Eye className="h-4 w-4" />
+          </div>
+          <h4 className="text-sm font-bold text-teal-900">Ready for your review</h4>
+        </div>
+        <p className="text-xs text-teal-800 leading-relaxed">
+          All {signerCount} signer{signerCount === 1 ? '' : 's'} have completed their part. Nothing is sealed yet — check the final document over, then approve to lock it in and notify everyone.
+        </p>
+
+        <button
+          onClick={() => navigate(`/review/${document.id}`)}
+          className="w-full flex flex-col items-center gap-2 mt-4 mb-3 py-6 bg-white border border-teal-200 rounded-lg hover:border-teal-400 transition-colors"
+        >
+          <FileSignature className="h-8 w-8 text-slate-300" />
+          <span className="text-sm font-semibold text-blue-600">Preview document →</span>
+        </button>
+
+        <button
+          onClick={handleApprove}
+          disabled={isApproving}
+          className="w-full flex items-center justify-center gap-1.5 py-2.5 text-sm font-semibold text-white bg-emerald-600 rounded-md hover:bg-emerald-700 transition-colors disabled:opacity-50"
+        >
+          <CheckCircle2 className="h-4 w-4" />
+          {isApproving ? 'Approving…' : 'Approve & finalize'}
+        </button>
+      </div>
+
+      <div className="flex items-start gap-2 mt-3 p-3 bg-slate-50 rounded-lg">
+        <Info className="h-4 w-4 text-slate-400 flex-shrink-0 mt-0.5" />
+        <p className="text-xs text-slate-500 leading-relaxed">
+          Approving appends the final audit trail, seals the document, and emails the sealed copy to all {signerCount} signer{signerCount === 1 ? '' : 's'} plus you.
+        </p>
       </div>
     </div>
   );
@@ -657,7 +731,7 @@ export default function Documents() {
   };
 
   const needsDecisionCount = useMemo(
-    () => documents.filter((d) => d.status === 'declined').length,
+    () => documents.filter((d) => d.status === 'declined' || d.status === 'pending_review').length,
     [documents]
   );
 
@@ -668,7 +742,7 @@ export default function Documents() {
 
   const filteredDocuments = useMemo(() => {
     return documents.filter((d) => {
-      if (activeTab === 'needs_decision' && d.status !== 'declined') return false;
+      if (activeTab === 'needs_decision' && !['declined', 'pending_review'].includes(d.status)) return false;
       if (activeTab === 'sent_by_you' && d.initiatorId && d.initiatorId !== currentUser?.id) return false;
       if (statusFilter !== 'all' && d.status !== statusFilter) return false;
       if (searchQuery && !d.fileName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
@@ -889,6 +963,8 @@ export default function Documents() {
 
                 {detail.status === 'declined' ? (
                   <DeclineResolutionPanel document={detail} onRefresh={handleRefresh} />
+                ) : detail.status === 'pending_review' ? (
+                  <ReviewPanel document={detail} onRefresh={handleRefresh} />
                 ) : (
                   <div className="mt-5">
                     <StepsTimeline steps={detail.steps} />

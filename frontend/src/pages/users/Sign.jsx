@@ -287,12 +287,12 @@ export default function Sign() {
 
     setIsLoading(true);
     try {
-      await api.post(`/api/documents/sign/${token}/complete`, {
+      const res = await api.post(`/api/documents/sign/${token}/complete`, {
         completedFields,
         updatedFields: fields
       });
 
-      toast.success('Document successfully signed and sealed!');
+      toast.success(res.data.message || 'Document signed successfully.');
 
       const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
       if (isAuthenticated) {

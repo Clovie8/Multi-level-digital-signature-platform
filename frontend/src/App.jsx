@@ -7,6 +7,7 @@ import Documents from './pages/users/Documents';
 import Settings from './pages/users/Settings';
 import Sign from './pages/users/Sign';
 import Upload from './pages/users/Upload';
+import Review from './pages/users/Review';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AuditLog from './pages/admin/AuditLog';
 import Layout from './components/Layout';
@@ -16,9 +17,9 @@ import AdminRoutes from './routes/AdminRoutes';
 function App() {
   return (
     <Router>
-      <Toaster 
-        position="top-center" 
-        reverseOrder={false} 
+      <Toaster
+        position="top-center"
+        reverseOrder={false}
         toastOptions={{
           style: { background: '#0f172a', color: '#fff', fontSize: '14px', borderRadius: '8px' },
         }}
@@ -37,6 +38,7 @@ function App() {
             <Route path="/documents" element={<Documents />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/upload" element={<Upload />} />
+            <Route path="/review/:id" element={<Review />} />
 
             {/* Admin-only routes*/}
             <Route element={<AdminRoutes />}>
