@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import api from '../lib/api';
+import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import {
   UploadCloud, Users, FileSignature, CheckCircle, Plus, Trash2,
@@ -361,6 +361,7 @@ export default function Upload() {
       setFields([...fields, newField]);
       setSelectedFieldId(newField.id); // Auto-select new field
     }
+
   };
 
   const updateFieldPosition = (id, newX, newY) => {
@@ -386,6 +387,7 @@ export default function Upload() {
       setFields(prev => prev.map(f => f.id === id ? { ...f, width, height } : f));
     }
   };
+
 
   const updateFieldProperty = (id, property, value) => {
     const targetField = fields.find(f => f.id === id);
@@ -504,6 +506,20 @@ export default function Upload() {
                       onChange={(e) => handleSignerChange(index, 'email', e.target.value)}
                       className="block w-full text-sm border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900 disabled:bg-slate-50 disabled:text-slate-500 py-2 px-3 border"
                     />
+
+                    <div className="mt-1 flex items-center">
+                      <input
+                        type="checkbox"
+                        id={`final-copy-${index}`}
+                        checked={signer.receivesFinalCopy !== false} // defaults to true
+                        onChange={(e) => handleSignerChange(index, 'receivesFinalCopy', e.target.checked)}
+                        className="h-3.5 w-3.5 text-slate-900 focus:ring-slate-900 border-slate-300 rounded cursor-pointer"
+                      />
+                      <label htmlFor={`final-copy-${index}`} className="ml-2 text-[11px] font-medium text-slate-500 cursor-pointer">
+                        Receive final signed document
+                      </label>
+                    </div>
+
                   </div>
                   <div className="w-full sm:w-auto flex items-center mt-2 sm:mt-0">
                     <input

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import api from '../lib/api';
+import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { PenTool, CheckCircle, ChevronLeft, ChevronRight, X, Upload } from 'lucide-react';
@@ -44,6 +44,24 @@ export default function Sign() {
   const padContainerRef = useRef(null);
   const [signMode, setSignMode] = useState('draw'); // 'draw' or 'type'
   const [padSize, setPadSize] = useState({ width: 450, height: 160 });
+  const isResizing = useRef(false);
+
+  //RESPONSIVE STATE
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 800) {
+        setScale((window.innerWidth - 32) / 750); 
+      } else {
+        setScale(1);
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    handleResize(); 
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
 
   // Image Upload & Cropping State
   const [uploadedImage, setUploadedImage] = useState(null);
@@ -60,8 +78,6 @@ export default function Sign() {
   // Track which fields have been completed
   const [completedFields, setCompletedFields] = useState({});
 
-  const isResizing = useRef(false);
-  const [scale, setScale] = useState(1);
 
   // OTP Authentication State
   const [requiresOtp, setRequiresOtp] = useState(false);
@@ -157,6 +173,7 @@ export default function Sign() {
 
   // 3. Adopt Signature and Apply to Field
   const handleAdoptSignature = async () => {
+
     try {
       // Helper to apply signature to all initial fields if an Initial is active
       const applyToFields = (dataToSave, imgUrlToSave = null) => {
@@ -412,6 +429,34 @@ export default function Sign() {
     );
   }
 
+  // Find fields that are not yet in the completedFields object
+  const pendingFields = [];
+  let hasAddedInitial = false;
+
+  fields.forEach(f => {
+    if (completedFields[f.id]) return; // Skip if already signed
+    if (f.type === 'Initial') {
+      if (!hasAddedInitial) {
+        pendingFields.push(f);
+        hasAddedInitial = true; // Never add another initial to the Action Guide
+      }
+    } else {
+      pendingFields.push(f);
+    }
+  });
+  
+  // Group the missing fields by their page number
+  const fieldsByPage = pendingFields.reduce((acc, field) => {
+    if (!acc[field.page]) acc[field.page] = [];
+    
+    // Rename 'Initial' so the user understands it applies to the whole document
+    const displayType = field.type === 'Initial' ? 'Initial (All Pages)' : field.type;
+    if (!acc[field.page].includes(displayType)) {
+      acc[field.page].push(displayType);
+    }
+    return acc;
+  }, {});
+
   return (
     <div className="flex flex-col h-screen bg-[#FAFAFA] font-sans overflow-hidden">
 
@@ -447,6 +492,51 @@ export default function Sign() {
 
       {/* PDF VIEWER AND CANVAS */}
       <main className="flex-1 overflow-auto bg-slate-200/50 flex flex-col relative py-8">
+
+         {/* --- FLOATING ACTION GUIDE --- */}
+        {Object.keys(fieldsByPage).length > 0 && (
+          <div className="lg:absolute lg:left-6 lg:top-8 w-[90%] max-w-sm lg:w-56 mx-auto lg:mx-0 bg-white border border-slate-200 rounded-lg shadow-md lg:shadow-lg z-20 overflow-hidden animate-in fade-in slide-in-from-left-4 mb-6 lg:mb-0 shrink-0">
+            
+            <div className="bg-slate-900 text-white px-4 py-3 text-sm font-semibold flex items-center justify-between">
+              Action Required
+              <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                {pendingFields.length} left
+              </span>
+            </div>
+            
+            <div className="max-h-[30vh] lg:max-h-[60vh] overflow-y-auto p-2 bg-slate-50 space-y-2">
+              {Object.entries(fieldsByPage).map(([pageStr, fieldTypes]) => {
+                const pageNum = parseInt(pageStr);
+                return (
+                  <div 
+                    key={pageNum} 
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`cursor-pointer p-1.5 border rounded-lg transition-all ${
+                      currentPage === pageNum 
+                        ? 'bg-blue-50 border-blue-300 shadow-sm' 
+                        : 'bg-white border-slate-200 hover:border-slate-400'
+                    }`}
+                  >
+                    <p className={`text-sm font-bold ${currentPage === pageNum ? 'text-blue-600' : 'text-slate-800'}`}>
+                      Page {pageNum}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Needs: {fieldTypes.map((type, index) => (
+                        <span key={index}>
+                          <span className={type === 'Initial (All Pages)' ? 'font-semibold text-slate-800' : ''}>
+                            {type}
+                          </span>
+                          {/* Add a comma after the item unless it's the last one */}
+                          {index < fieldTypes.length - 1 ? ', ' : ''}
+                        </span>
+                      ))}
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Pagination Controls */}
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white px-4 py-2 rounded-full shadow-lg border border-slate-200 flex items-center space-x-4 z-20">
@@ -513,7 +603,16 @@ export default function Sign() {
         </div>
 
         {/* The PDF Container */}
-        <div className="mx-auto relative shadow-xl border border-slate-200 bg-white origin-top" style={{ transform: `scale(${scale})`, width: 750 }} ref={containerRef}>
+        <div 
+          ref={containerRef}
+          className="mx-auto flex justify-center" 
+          style={{ 
+            transform: `scale(${scale})`, 
+            transformOrigin: 'top center',
+            marginBottom: scale < 1 ? `-${(1 - scale) * 970}px` : '0' 
+          }}
+        > 
+          <div className="relative shadow-xl border border-slate-200 bg-white origin-top" style={{ width: '750px' }}>
           <Document
             file={documentFile} // URL from backend
             onLoadSuccess={onDocumentLoadSuccess}
@@ -541,11 +640,17 @@ export default function Sign() {
                 enableResizing={{ top: true, right: true, bottom: true, left: true, topRight: true, bottomRight: true, bottomLeft: true, topLeft: true }}
                 onResizeStart={() => { isResizing.current = true; }}
                 onResizeStop={(e, direction, ref, delta, position) => {
+                  setTimeout(() => {
+                    isResizing.current = false;
+                  }, 150);
+                
                   const newWidth = parseInt(ref.style.width);
                   const newHeight = parseInt(ref.style.height);
                   setFields(fields.map(f => f.id === field.id ? { ...f, width: newWidth, height: newHeight, x: position.x, y: position.y } : f));
                   setTimeout(() => { isResizing.current = false; }, 200);
                 }}
+
+
                 className={`absolute cursor-pointer border-2 rounded shadow-sm transition-colors flex items-center justify-center z-30 hover:shadow-md
                   ${isCompleted
                     ? 'bg-blue-50 border-blue-400 text-blue-900'
@@ -575,6 +680,7 @@ export default function Sign() {
               </Rnd>
             );
           })}
+          </div>
         </div>
       </main>
 
