@@ -72,7 +72,7 @@ export default function Upload() {
   // Signer Hierarchy State
   const [isInitiatorFirst, setIsInitiatorFirst] = useState(false);
   const [signers, setSigners] = useState([
-    { id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200' }
+    { id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200', receivesFinalCopy: true }
   ]);
 
   // Canvas State (Preparation Phase)
@@ -190,7 +190,8 @@ export default function Upload() {
       name: '',
       email: '',
       role: `Level ${newIndex + 1} Signer`,
-      color: signerColors[newIndex]
+      color: signerColors[newIndex],
+      receivesFinalCopy: true
     }]);
   };
 
@@ -236,6 +237,16 @@ export default function Upload() {
 
   // DISPATCH HANDLER
   const handleDispatchDocument = async () => {
+
+    // Send button Validation
+    const missingSigners = signers.filter(signer => 
+      !fields.some(field => field.signerId === signer.id)
+    );
+    if (missingSigners.length > 0) {
+      const names = missingSigners.map(s => s.name || s.role).join(', ');
+      return toast.error(`Please assign at least one field to: ${names}`);
+    }
+
     setIsLoading(true);
 
     try {
@@ -303,22 +314,36 @@ export default function Upload() {
     const xPct = (x / bounds.width) * 100;
     const yPct = (y / bounds.height) * 100;
 
-    const newField = {
-      id: `field_${Date.now()}`,
-      type: fieldType,
-      signerId: activeSignerId,
-      page: currentPage,
-      x: x,
-      y: y,
-      xPct: xPct,
-      yPct: yPct,
-      width: fieldType === 'Text Box' ? 150 : 100,
-      height: fieldType === 'Text Box' ? 30 : 35,
-      required: true
-    };
-
-    setFields([...fields, newField]);
-    setSelectedFieldId(newField.id); // Auto-select new field
+    
+    if (fieldType === 'Initial') {
+      const initialFields = [];
+      // Loop and create a field for every single page
+      for (let i = 1; i <= totalPages; i++) {
+        initialFields.push({
+          id: `field_${Date.now()}_${i}`,
+          type: fieldType,
+          signerId: activeSignerId,
+          page: i, // <--- Assigned to page i
+          x: x, y: y, xPct: xPct, yPct: yPct,
+          width: 100, height: 35, required: true
+        });
+      }
+      setFields([...fields, ...initialFields]);
+      // Auto-select the one on the current page so they can drag it immediately
+      setSelectedFieldId(initialFields[currentPage - 1].id); 
+    } else {
+      // Your existing standard logic for other fields:
+      const newField = {
+        id: `field_${Date.now()}`,
+        type: fieldType, signerId: activeSignerId, page: currentPage,
+        x: x, y: y, xPct: xPct, yPct: yPct,
+        width: fieldType === 'Text Box' ? 150 : 100,
+        height: fieldType === 'Text Box' ? 30 : 35,
+        required: true
+      };
+      setFields([...fields, newField]);
+      setSelectedFieldId(newField.id);
+    }
   };
 
   const updateFieldPosition = (id, newX, newY) => {
@@ -328,12 +353,32 @@ export default function Upload() {
     const xPct = (newX / bounds.width) * 100;
     const yPct = (newY / bounds.height) * 100;
 
-    setFields(prev => prev.map(f => f.id === id ? { ...f, x: newX, y: newY, xPct: xPct, yPct: yPct } : f));
+    const targetField = fields.find(f => f.id === id);
+    if (targetField?.type === 'Initial') {
+      // Move ALL initials for this signer
+      setFields(prev => prev.map(f => 
+        (f.type === 'Initial' && f.signerId === targetField.signerId) 
+          ? { ...f, x: newX, y: newY, xPct: xPct, yPct: yPct } 
+          : f
+      ));
+    } else {
+      // Standard logic
+      setFields(prev => prev.map(f => f.id === id ? { ...f, x: newX, y: newY, xPct: xPct, yPct: yPct } : f));
+    }
+
   };
 
   const updateFieldSize = (id, width, height) => {
-    setFields(prev => prev.map(f => f.id === id ? { ...f, width, height } : f));
+    const targetField = fields.find(f => f.id === id);
+    if (targetField?.type === 'Initial') {
+      setFields(prev => prev.map(f => 
+        (f.type === 'Initial' && f.signerId === targetField.signerId) ? { ...f, width, height } : f
+      ));
+    } else {
+      setFields(prev => prev.map(f => f.id === id ? { ...f, width, height } : f));
+    }
   };
+
 
   const updateFieldProperty = (id, property, value) => {
     setFields(prev => prev.map(f => f.id === id ? { ...f, [property]: value } : f));
@@ -442,6 +487,20 @@ export default function Upload() {
                       onChange={(e) => handleSignerChange(index, 'email', e.target.value)}
                       className="block w-full text-sm border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900 disabled:bg-slate-50 disabled:text-slate-500 py-2 px-3 border"
                     />
+
+                    <div className="mt-1 flex items-center">
+                      <input
+                        type="checkbox"
+                        id={`final-copy-${index}`}
+                        checked={signer.receivesFinalCopy !== false} // defaults to true
+                        onChange={(e) => handleSignerChange(index, 'receivesFinalCopy', e.target.checked)}
+                        className="h-3.5 w-3.5 text-slate-900 focus:ring-slate-900 border-slate-300 rounded cursor-pointer"
+                      />
+                      <label htmlFor={`final-copy-${index}`} className="ml-2 text-[11px] font-medium text-slate-500 cursor-pointer">
+                        Receive final signed document
+                      </label>
+                    </div>
+
                   </div>
                   {index > 0 && (
                     <button onClick={() => removeSigner(index)} className="absolute -right-2 -top-2 sm:static sm:mt-2 text-slate-400 hover:text-red-500 transition-colors">
