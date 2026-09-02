@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
-import {UploadCloud, Users, FileSignature, CheckCircle, Plus, Trash2,
-ArrowRight,PenTool, Calendar, Type, UserSquare, ChevronLeft, ChevronRight, Search, Send, X
+import {
+  UploadCloud, Users, FileSignature, CheckCircle, Plus, Trash2,
+  ArrowRight, PenTool, Calendar, Type, UserSquare, ChevronLeft, ChevronRight, Search, Send, X
 } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Rnd } from 'react-rnd';
@@ -46,6 +47,8 @@ export default function Upload() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const editDocumentId = searchParams.get('edit');
 
   const [currentUser, setCurrentUser] = useState(null);
 
@@ -63,6 +66,7 @@ export default function Upload() {
 
   // Workflow State
   const [file, setFile] = useState(null);
+  const [existingFile, setExistingFile] = useState(null); // { url, fileName } — draft being edited
   const [documentId, setDocumentId] = useState(null);
 
   // Signer Hierarchy State
@@ -76,7 +80,31 @@ export default function Upload() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [fields, setFields] = useState([]);
-  
+
+  useEffect(() => {
+    if (!editDocumentId) return;
+
+    const loadDraft = async () => {
+      try {
+        const res = await api.get(`/api/documents/${editDocumentId}/file`);
+        setDocumentId(editDocumentId);
+        setExistingFile({ url: res.data.url, fileName: res.data.fileName });
+
+        const draftConfig = res.data.draftConfig;
+        if (draftConfig) {
+          if (draftConfig.signers?.length) setSigners(draftConfig.signers);
+          if (draftConfig.fields?.length) setFields(draftConfig.fields);
+          if (draftConfig.isInitiatorFirst) setIsInitiatorFirst(draftConfig.isInitiatorFirst);
+          if (draftConfig.currentStep) setCurrentStep(draftConfig.currentStep);
+        }
+      } catch (err) {
+        toast.error(err.response?.data?.error || 'Could not load this draft.');
+        navigate('/documents');
+      }
+    };
+    loadDraft();
+  }, [editDocumentId, navigate]);
+
   // UX State
   const [selectedFieldId, setSelectedFieldId] = useState(null);
   const [isSignerDropdownOpen, setIsSignerDropdownOpen] = useState(false);
@@ -97,6 +125,12 @@ export default function Upload() {
   };
 
   const handleUploadSubmit = async () => {
+    // Editing a draft and keeping its existing file — nothing to upload, just move on.
+    if (!file && existingFile) {
+      setCurrentStep(2);
+      return;
+    }
+
     if (!file) return toast.error('Please select a file first.');
 
     setIsLoading(true);
@@ -104,19 +138,22 @@ export default function Upload() {
     formData.append('pdf_file', file);
 
     try {
-      const token = localStorage.getItem('token');
-      const res = await api.post('/api/documents/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      setDocumentId(res.data.document.id);
-      toast.success('Document secured in Cloudflare R2.');
+      if (existingFile) {
+        // Editing a draft and replacing its file.
+        await api.post(`/api/documents/${documentId}/file`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        toast.success('File replaced.');
+      } else {
+        const res = await api.post('/api/documents/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        setDocumentId(res.data.document.id);
+        toast.success('Document secured in Cloudflare R2.');
+      }
       setCurrentStep(2);
     } catch (error) {
-      toast.error('Upload failed. Check your connection.');
+      toast.error(error.response?.data?.error || 'Upload failed. Check your connection.');
       console.error(error);
     } finally {
       setIsLoading(false);
@@ -184,13 +221,26 @@ export default function Upload() {
     setCurrentStep(3);
   };
 
+  const handleSaveAsDraft = async () => {
+    setIsLoading(true);
+    try {
+      await api.patch(`/api/documents/${documentId}/draft-config`, { signers, fields, isInitiatorFirst, currentStep });
+      toast.success('Saved as draft.');
+      navigate('/documents');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not save this draft.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // DISPATCH HANDLER
   const handleDispatchDocument = async () => {
     setIsLoading(true);
-    
+
     try {
       const token = localStorage.getItem('token');
-      
+
       // We now include the dragged 'fields' in the payload
       const res = await api.post(`/api/documents/${documentId}/dispatch`, {
         signers: signers,
@@ -200,9 +250,9 @@ export default function Upload() {
           'Authorization': `Bearer ${token}`
         }
       });
-      
+
       toast.success(res.data.message);
-      
+
       if (res.data.isInitiatorFirst && res.data.redirectToken) {
         // Path A: Redirect instantly to signing canvas
         navigate(`/sign/${res.data.redirectToken}`);
@@ -294,6 +344,7 @@ export default function Upload() {
   };
 
   const activeSigner = signers.find(s => s.id === activeSignerId) || signers[0];
+  const canvasFileSource = file || existingFile?.url || null;
   const activeColorClasses = activeSigner.color; // e.g. "bg-blue-100 text-blue-700 border-blue-200"
 
   return (
@@ -323,18 +374,20 @@ export default function Upload() {
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               />
               <div className="flex flex-col items-center pointer-events-none">
-                <UploadCloud className={`h-12 w-12 mb-4 transition-colors ${file ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
+                <UploadCloud className={`h-12 w-12 mb-4 transition-colors ${file || existingFile ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
                 <span className="text-sm font-medium text-slate-900">
-                  {file ? file.name : 'Click to browse or drag PDF here'}
+                  {file ? file.name : existingFile ? existingFile.fileName : 'Click to browse or drag PDF here'}
                 </span>
-                <span className="text-xs text-slate-500 mt-2">Maximum file size: 10MB</span>
+                <span className="text-xs text-slate-500 mt-2">
+                  {existingFile && !file ? 'Drop a new PDF here to replace it' : 'Maximum file size: 10MB'}
+                </span>
               </div>
             </div>
 
             <div className="mt-8 flex justify-end">
               <button
                 onClick={handleUploadSubmit}
-                disabled={isLoading || !file}
+                disabled={isLoading || (!file && !existingFile)}
                 className="flex items-center py-2.5 px-6 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors disabled:opacity-50"
               >
                 {isLoading ? 'Uploading securely...' : 'Continue to Hierarchy'} <ArrowRight className="ml-2 h-4 w-4" />
@@ -405,13 +458,18 @@ export default function Upload() {
               </button>
             </div>
 
-            <div className="mt-8 pt-6 border-t border-slate-100 flex justify-between">
-              <button onClick={() => setCurrentStep(1)} className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">
+            <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
+              <button onClick={() => setCurrentStep(1)} className="flex items-center gap-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg px-3 py-2 mr-2 hover:bg-slate-50 hover:border-slate-400 transition-colors">
                 Back
               </button>
-              <button onClick={handleHierarchySubmit} className="flex items-center py-2.5 px-6 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors">
-                Continue to Canvas <ArrowRight className="ml-2 h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-3">
+                <button onClick={handleSaveAsDraft} disabled={isLoading} className="px-4 py-2.5 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 transition-colors disabled:opacity-50">
+                  {isLoading ? 'Saving...' : 'Save as draft'}
+                </button>
+                <button onClick={handleHierarchySubmit} className="flex items-center py-2.5 px-6 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors">
+                  Continue to Canvas <ArrowRight className="ml-2 h-4 w-4" />
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -419,14 +477,14 @@ export default function Upload() {
         {/* STEP 3 UI: THE CANVAS WORKSPACE */}
         {currentStep === 3 && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col md:flex-row h-[750px] animate-in fade-in slide-in-from-right-4 duration-500">
-            
+
             {/* Left Sidebar: Tool Panel */}
             <div className="w-full md:w-56 bg-slate-50 border-r border-slate-200 flex flex-col z-20 shadow-[2px_0_8px_-3px_rgba(0,0,0,0.1)]">
-              
+
               {/* Recipient Dropdown Redesign */}
               <div className="p-3 border-b border-slate-200 bg-white relative">
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Recipient</label>
-                <div 
+                <div
                   className="w-full text-xs border border-slate-200 rounded p-2 flex items-center justify-between cursor-pointer hover:border-slate-400 bg-white shadow-sm transition-colors"
                   onClick={() => setIsSignerDropdownOpen(!isSignerDropdownOpen)}
                 >
@@ -436,12 +494,12 @@ export default function Upload() {
                   </div>
                   <ChevronRight className={`h-3 w-3 text-slate-400 transition-transform ${isSignerDropdownOpen ? 'rotate-90' : ''}`} />
                 </div>
-                
+
                 {isSignerDropdownOpen && (
                   <div className="absolute top-[100%] left-3 right-3 mt-1 bg-white border border-slate-200 rounded-md shadow-lg z-50 py-1">
                     {signers.map(s => (
-                      <div 
-                        key={s.id} 
+                      <div
+                        key={s.id}
                         className="px-3 py-2 text-xs hover:bg-slate-50 cursor-pointer flex items-center"
                         onClick={() => { setActiveSignerId(s.id); setIsSignerDropdownOpen(false); }}
                       >
@@ -459,9 +517,9 @@ export default function Upload() {
                 <DraggableField icon={PenTool} label="Signature" type="Signature" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
                 <DraggableField icon={Type} label="Initial" type="Initial" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
                 <DraggableField icon={Calendar} label="Date Signed" type="Date" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
-                
+
                 <div className="mt-4 mb-2 h-px bg-slate-200"></div>
-                
+
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Data Fields</label>
                 <DraggableField icon={UserSquare} label="Name" type="Name" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
                 <DraggableField icon={Type} label="Text Box" type="Text Box" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
@@ -476,17 +534,22 @@ export default function Upload() {
                       <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                  
+
                   {(() => {
                     const sField = fields.find(f => f.id === selectedFieldId);
                     if (!sField) return null;
                     const fSigner = signers.find(s => s.id === sField.signerId);
-                    
+
                     return (
                       <div className="p-4 space-y-4">
                         <div>
-                          <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Assigned To</label>
-                          <select 
+                          <label className="flex items-center text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                            {fSigner && (
+                              <span className={`w-2 h-2 rounded-full mr-1.5 ${fSigner.color.split(' ')[0].replace('-100', '-500')}`}></span>
+                            )}
+                            Assigned To
+                          </label>
+                          <select
                             value={sField.signerId}
                             onChange={(e) => updateFieldProperty(sField.id, 'signerId', Number(e.target.value))}
                             className="block w-full text-xs font-medium text-slate-900 bg-white p-2 rounded border border-slate-200 focus:ring-slate-900 focus:border-slate-900 shadow-sm cursor-pointer"
@@ -500,8 +563,8 @@ export default function Upload() {
                         </div>
 
                         <div className="flex items-center py-1">
-                          <input 
-                            type="checkbox" 
+                          <input
+                            type="checkbox"
                             id="requiredField"
                             checked={sField.required}
                             onChange={(e) => updateFieldProperty(sField.id, 'required', e.target.checked)}
@@ -511,7 +574,7 @@ export default function Upload() {
                         </div>
 
                         <div className="pt-4 border-t border-slate-100">
-                          <button 
+                          <button
                             onClick={() => { deleteField(sField.id); setSelectedFieldId(null); }}
                             className="w-full flex items-center justify-center py-2 px-3 border border-red-200 text-red-600 rounded-md text-xs font-medium hover:bg-red-50 hover:border-red-300 transition-colors shadow-sm"
                           >
@@ -532,6 +595,9 @@ export default function Upload() {
               {/* PDF Toolbar */}
               <div className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 shadow-sm z-10">
                 <div className="flex items-center space-x-2">
+                  <button onClick={() => setCurrentStep(2)} className="flex items-center gap-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg px-3 py-2 mr-2 hover:bg-slate-50 hover:border-slate-400 transition-colors">
+                    Back
+                  </button>
                   <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage <= 1} className="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors disabled:opacity-50"><ChevronLeft className="h-5 w-5" /></button>
                   <span className="text-sm font-medium text-slate-600">Page {currentPage} of {totalPages}</span>
                   <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage >= totalPages} className="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors disabled:opacity-50"><ChevronRight className="h-5 w-5" /></button>
@@ -542,29 +608,34 @@ export default function Upload() {
                   <span className="text-xs font-medium text-slate-500 w-12 text-center">100%</span>
                 </div>
 
-                <button
-                  onClick={handleDispatchDocument}
-                  disabled={isLoading}
-                  className="flex items-center py-2 px-4 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-sm"
-                >
-                  {isLoading ? 'Processing...' : 'Send Document'} <Send className="ml-2 h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-3">
+                  <button onClick={handleSaveAsDraft} disabled={isLoading} className="px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 transition-colors disabled:opacity-50">
+                    {isLoading ? 'Saving...' : 'Save as draft'}
+                  </button>
+                  <button
+                    onClick={handleDispatchDocument}
+                    disabled={isLoading}
+                    className="flex items-center py-2 px-4 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-sm"
+                  >
+                    {isLoading ? 'Processing...' : 'Send Document'} <Send className="ml-2 h-4 w-4" />
+                  </button>
+                </div>
               </div>
 
               {/* The Actual Canvas Area */}
-              <div 
+              <div
                 className="flex-1 overflow-auto p-8 flex justify-center relative bg-slate-200/50"
                 onClick={() => setSelectedFieldId(null)}
               >
-                <div 
+                <div
                   id="pdf-dropzone"
-                  className={`relative shadow-lg border border-slate-200 bg-white w-[750px] mx-auto ${file ? 'h-fit' : 'min-h-[500px]'}`}
+                  className={`relative shadow-lg border border-slate-200 bg-white w-[750px] mx-auto ${canvasFileSource ? 'h-fit' : 'min-h-[500px]'}`}
                   onDragOver={handleDragOver}
                   onDrop={handleDrop}
                 >
-                  {file ? (
+                  {canvasFileSource ? (
                     <Document
-                      file={file}
+                      file={canvasFileSource}
                       onLoadSuccess={onDocumentLoadSuccess}
                       loading={<div className="p-20 text-slate-400 flex justify-center w-[750px]">Loading document...</div>}
                       error={<div className="p-20 text-red-500 flex justify-center w-[750px]">Failed to load PDF.</div>}
@@ -620,7 +691,7 @@ export default function Upload() {
                         onClick={(e) => { e.stopPropagation(); setSelectedFieldId(field.id); }}
                       >
                         <span className={`text-[10px] font-bold uppercase tracking-wider flex items-center ${textColor}`}>
-                           {field.type} {field.required ? '*' : ''}
+                          {field.type} {field.required ? '*' : ''}
                         </span>
                       </Rnd>
                     );

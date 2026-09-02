@@ -16,6 +16,7 @@
     "react-dom": "^19.2.8",
     "react-draggable": "^4.7.1",
     "react-hot-toast": "^2.6.0",
+    "react-image-crop": "^11.1.2",
     "react-pdf": "^10.4.1",
     "react-rnd": "^10.5.3",
     "react-router-dom": "^7.18.2",
