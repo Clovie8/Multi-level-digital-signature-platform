@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import api from '../lib/api';
+import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { ChevronLeft, ChevronRight, ArrowLeft, CheckCircle2, Download } from 'lucide-react';

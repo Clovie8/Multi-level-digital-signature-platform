@@ -1,22 +1,25 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 // Component Imports
-import Auth from './pages/Auth';
-import Dashboard from './pages/Dashboard';
-import Documents from './pages/Documents';
-import Settings from './pages/Settings';
-import Sign from './pages/Sign';
+import Auth from './pages/users/Auth';
+import Dashboard from './pages/users/Dashboard';
+import Documents from './pages/users/Documents';
+import Settings from './pages/users/Settings';
+import Sign from './pages/users/Sign';
+import Upload from './pages/users/Upload';
+import Review from './pages/users/Review';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import AuditLog from './pages/admin/AuditLog';
 import Layout from './components/Layout';
 import ProtectedRoute from './routes/ProtectedRoute';
-import Upload from './pages/Upload';
-import Review from './pages/Review';
+import AdminRoutes from './routes/AdminRoutes';
 
 function App() {
   return (
     <Router>
-      <Toaster 
-        position="top-center" 
-        reverseOrder={false} 
+      <Toaster
+        position="top-center"
+        reverseOrder={false}
         toastOptions={{
           style: { background: '#0f172a', color: '#fff', fontSize: '14px', borderRadius: '8px' },
         }}
@@ -36,6 +39,12 @@ function App() {
             <Route path="/settings" element={<Settings />} />
             <Route path="/upload" element={<Upload />} />
             <Route path="/review/:id" element={<Review />} />
+
+            {/* Admin-only routes*/}
+            <Route element={<AdminRoutes />}>
+              <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/admin/audit-logs" element={<AuditLog />} />
+            </Route>
           </Route>
         </Route>
 
