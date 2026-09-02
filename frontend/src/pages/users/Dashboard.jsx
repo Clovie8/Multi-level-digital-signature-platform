@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { PieChart, Pie, Cell, BarChart, Bar, ResponsiveContainer, XAxis } from 'recharts';
-import api from '../lib/api';
+import api from '../../lib/api';
 import { Plus, Loader2, ChevronRight, PenTool } from 'lucide-react';
 
 const STATUS_COLORS = {
