@@ -71,6 +71,7 @@ export default function Upload() {
 
   // Signer Hierarchy State
   const [isInitiatorFirst, setIsInitiatorFirst] = useState(false);
+  const [initiatorReceivesFinalCopy, setInitiatorReceivesFinalCopy] = useState(true);
   const [signers, setSigners] = useState([
     { id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200', receivesFinalCopy: true }
   ]);
@@ -94,7 +95,8 @@ export default function Upload() {
         if (draftConfig) {
           if (draftConfig.signers?.length) setSigners(draftConfig.signers);
           if (draftConfig.fields?.length) setFields(draftConfig.fields);
-          if (draftConfig.isInitiatorFirst) setIsInitiatorFirst(draftConfig.isInitiatorFirst);
+          if (draftConfig.isInitiatorFirst !== undefined) setIsInitiatorFirst(draftConfig.isInitiatorFirst);
+          if (draftConfig.initiatorReceivesFinalCopy !== undefined) setInitiatorReceivesFinalCopy(draftConfig.initiatorReceivesFinalCopy);
           if (draftConfig.currentStep) setCurrentStep(draftConfig.currentStep);
         }
       } catch (err) {
@@ -225,7 +227,14 @@ export default function Upload() {
   const handleSaveAsDraft = async () => {
     setIsLoading(true);
     try {
-      await api.patch(`/api/documents/${documentId}/draft-config`, { signers, fields, isInitiatorFirst, currentStep });
+      const finalSigners = signers.map((s, idx) => {
+        if (isInitiatorFirst && idx === 0) {
+          return { ...s, receivesFinalCopy: initiatorReceivesFinalCopy };
+        }
+        return s;
+      });
+
+      await api.patch(`/api/documents/${documentId}/draft-config`, { signers: finalSigners, fields, isInitiatorFirst, initiatorReceivesFinalCopy, currentStep });
       toast.success('Saved as draft.');
       navigate('/documents');
     } catch (err) {
@@ -248,10 +257,18 @@ export default function Upload() {
     try {
       const token = localStorage.getItem('token');
 
+      const finalSigners = signers.map((s, idx) => {
+        if (isInitiatorFirst && idx === 0) {
+          return { ...s, receivesFinalCopy: initiatorReceivesFinalCopy };
+        }
+        return s;
+      });
+
       // We now include the dragged 'fields' in the payload
       const res = await api.post(`/api/documents/${documentId}/dispatch`, {
-        signers: signers,
-        fields: fields
+        signers: finalSigners,
+        fields: fields,
+        initiatorReceivesFinalCopy: initiatorReceivesFinalCopy
       }, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -466,17 +483,32 @@ export default function Upload() {
             <h2 className="text-2xl font-semibold text-slate-900 mb-2">Define Routing Hierarchy</h2>
             <p className="text-slate-500 text-sm mb-6">Who needs to sign this document? The system will route it sequentially from Level 1 downwards.</p>
 
-            <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-lg flex items-center">
-              <input
-                type="checkbox"
-                id="meFirst"
-                checked={isInitiatorFirst}
-                onChange={toggleInitiatorFirst}
-                className="h-4 w-4 text-slate-900 focus:ring-slate-900 border-slate-300 rounded cursor-pointer"
-              />
-              <label htmlFor="meFirst" className="ml-3 block text-sm font-medium text-slate-900 cursor-pointer">
-                I am the first signer
-              </label>
+            <div className="mb-4 bg-slate-50 border border-slate-200 rounded-lg overflow-hidden divide-y divide-slate-200">
+              <div className="p-2.5 flex items-center hover:bg-slate-100/50 transition-colors">
+                <input
+                  type="checkbox"
+                  id="meFirst"
+                  checked={isInitiatorFirst}
+                  onChange={toggleInitiatorFirst}
+                  className="h-4 w-4 text-slate-900 focus:ring-slate-900 border-slate-300 rounded cursor-pointer"
+                />
+                <label htmlFor="meFirst" className="ml-3 block text-sm font-medium text-slate-900 cursor-pointer flex-grow">
+                  I am the first signer
+                </label>
+              </div>
+
+              <div className="p-2.5 flex items-center hover:bg-slate-100/50 transition-colors">
+                <input
+                  type="checkbox"
+                  id="initiatorFinalCopy"
+                  checked={initiatorReceivesFinalCopy}
+                  onChange={(e) => setInitiatorReceivesFinalCopy(e.target.checked)}
+                  className="h-4 w-4 text-slate-900 focus:ring-slate-900 border-slate-300 rounded cursor-pointer"
+                />
+                <label htmlFor="initiatorFinalCopy" className="ml-3 block text-sm font-medium text-slate-900 cursor-pointer flex-grow">
+                  Send me a copy of the final completed document
+                </label>
+              </div>
             </div>
 
             <div className="space-y-4">
@@ -507,18 +539,20 @@ export default function Upload() {
                       className="block w-full text-sm border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900 disabled:bg-slate-50 disabled:text-slate-500 py-2 px-3 border"
                     />
 
-                    <div className="mt-1 flex items-center">
-                      <input
-                        type="checkbox"
-                        id={`final-copy-${index}`}
-                        checked={signer.receivesFinalCopy !== false} // defaults to true
-                        onChange={(e) => handleSignerChange(index, 'receivesFinalCopy', e.target.checked)}
-                        className="h-3.5 w-3.5 text-slate-900 focus:ring-slate-900 border-slate-300 rounded cursor-pointer"
-                      />
-                      <label htmlFor={`final-copy-${index}`} className="ml-2 text-[11px] font-medium text-slate-500 cursor-pointer">
-                        Receive final signed document
-                      </label>
-                    </div>
+                    {!(isInitiatorFirst && index === 0) && (
+                      <div className="mt-1 flex items-center">
+                        <input
+                          type="checkbox"
+                          id={`final-copy-${index}`}
+                          checked={signer.receivesFinalCopy !== false} // defaults to true
+                          onChange={(e) => handleSignerChange(index, 'receivesFinalCopy', e.target.checked)}
+                          className="h-3.5 w-3.5 text-slate-900 focus:ring-slate-900 border-slate-300 rounded cursor-pointer"
+                        />
+                        <label htmlFor={`final-copy-${index}`} className="ml-2 text-[11px] font-medium text-slate-500 cursor-pointer">
+                          Receive final signed document
+                        </label>
+                      </div>
+                    )}
 
                   </div>
 
