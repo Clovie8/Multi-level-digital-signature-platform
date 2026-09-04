@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { PenTool, CheckCircle, ChevronLeft, ChevronRight, X, Upload } from 'lucide-react';
+import { PenTool, CheckCircle, ChevronLeft, ChevronRight, X, Upload, Lock } from 'lucide-react';
 import SignatureCanvas from 'react-signature-canvas';
 import { Rnd } from 'react-rnd';
 import ReactCrop from 'react-image-crop';
@@ -16,6 +16,65 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
   import.meta.url,
 ).toString();
+
+
+const PinInputBox = ({ pin, setPin }) => {
+  const inputs = useRef([]);
+
+  const handleChange = (e, index) => {
+    const val = e.target.value.replace(/\D/g, '');
+    if (!val) return;
+
+    const newPin = pin.split('');
+    newPin[index] = val.slice(-1); 
+    setPin(newPin.join(''));
+
+    if (index < 3 && val) {
+      inputs.current[index + 1].focus();
+    }
+  };
+
+  const handleKeyDown = (e, index) => {
+    if (e.key === 'Backspace') {
+      const newPin = pin.split('');
+      newPin[index] = '';
+      setPin(newPin.join(''));
+      
+      if (index > 0) {
+        inputs.current[index - 1].focus();
+      }
+    }
+  };
+
+  const handlePaste = (e) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 4);
+    if (pasted) {
+      setPin(pasted);
+      const nextIndex = pasted.length < 4 ? pasted.length : 3;
+      inputs.current[nextIndex].focus();
+    }
+  };
+
+  return (
+    <div className="flex space-x-2">
+      {[0, 1, 2, 3].map((i) => (
+        <input
+          key={i}
+          ref={(el) => (inputs.current[i] = el)}
+          type="password"
+          maxLength="1"
+          value={pin[i] || ''}
+          onChange={(e) => handleChange(e, i)}
+          onKeyDown={(e) => handleKeyDown(e, i)}
+          onPaste={i === 0 ? handlePaste : undefined}
+          className="w-10 h-12 text-center text-xl font-bold border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm transition-all"
+        />
+      ))}
+    </div>
+  );
+};
+
 
 export default function Sign() {
   const { token } = useParams(); // Grab the secure token from the URL
@@ -74,6 +133,18 @@ export default function Sign() {
   const [selectedSavedSignature, setSelectedSavedSignature] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+
+  // Vault Security State
+  const [vaultPin, setVaultPin] = useState('');
+  const [isVaultUnlocked, setIsVaultUnlocked] = useState(false);
+  const [hasExistingPin, setHasExistingPin] = useState(false);
+  const [isCheckingSecurity, setIsCheckingSecurity] = useState(false); 
+  const [isUnlocking, setIsUnlocking] = useState(false); 
+  const [isRequestingReset, setIsRequestingReset] = useState(false);
+  const [isConfirmingReset, setIsConfirmingReset] = useState(false);
+  const [isResettingPin, setIsResettingPin] = useState(false);
+  const [resetOtp, setResetOtp] = useState('');
+  const [newPin, setNewPin] = useState('');
 
   // Track which fields have been completed
   const [completedFields, setCompletedFields] = useState({});
@@ -171,6 +242,40 @@ export default function Sign() {
     }
   };
 
+  const handleForgotPin = async () => {
+    setIsRequestingReset(true);
+    try {
+      await api.post(`/api/signatures/reset-pin-request`, { email: signerInfo.email });
+      setIsResettingPin(true);
+      toast.success('Check your email for the reset code.');
+    } catch (error) {
+      toast.error('Failed to request reset.');
+    } finally {
+      setIsRequestingReset(false);
+    }
+  };
+
+  const handleConfirmPinReset = async () => {
+    if (newPin.length !== 4) return toast.error('PIN must be exactly 4 digits.');
+    setIsConfirmingReset(true); 
+    try {
+      await api.post(`/api/signatures/reset-pin-confirm`, {
+        email: signerInfo.email,
+        otp: resetOtp,
+        newPin: newPin
+      });
+      setIsResettingPin(false);
+      setResetOtp('');
+      setNewPin('');
+      setVaultPin(newPin); 
+      toast.success('PIN successfully updated. You may now proceed.');
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Invalid reset code.');
+    } finally {
+      setIsConfirmingReset(false); 
+    }
+  };
+
   // 3. Adopt Signature and Apply to Field
   const handleAdoptSignature = async () => {
 
@@ -257,6 +362,14 @@ export default function Sign() {
         formData.append('signerEmail', signerInfo?.email || 'guest@example.com');
         formData.append('saveForFuture', saveForFuture); 
 
+        if (saveForFuture) {
+          if (!vaultPin || vaultPin.length !== 4) {
+            setIsAdopting(false);
+            return toast.error('Your secure PIN must be exactly 4 digits.');
+          }
+          formData.append('pin', vaultPin);
+        }
+
         const uploadRes = await api.post('/api/signatures/upload', formData, {
             headers: { 'Content-Type': 'multipart/form-data' }
         });
@@ -297,7 +410,9 @@ export default function Sign() {
       }
     } catch (err) {
       console.error("Error adopting signature:", err);
-      toast.error(`Failed to capture signature: ${err.message || 'Unknown error'}`);
+      const errorMessage = err.response?.data?.error || `Failed to capture signature: ${err.message}`;
+      toast.error(errorMessage);
+      
     } finally {
       setIsAdopting(false);
     }
@@ -349,7 +464,8 @@ export default function Sign() {
     try {
       const res = await api.post(`/api/documents/sign/${token}/complete`, {
         completedFields,
-        updatedFields: fields
+        updatedFields: fields,
+        pin: vaultPin
       });
 
       toast.success(res.data.message || 'Document signed successfully.');
@@ -637,14 +753,15 @@ export default function Sign() {
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
-          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+          
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
 
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50 shrink-0">
               <h3 className="text-lg font-semibold text-slate-900">Adopt Your Signature</h3>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="h-5 w-5" /></button>
             </div>
 
-            <div className="p-6">
+            <div className="p-6 overflow-y-auto">
               {/* Toggle Draw / Type / Upload */}
               <div className="flex space-x-4 mb-4 border-b border-slate-200 pb-2">
                 <button
@@ -752,17 +869,110 @@ export default function Sign() {
                   )}
 
                   {uploadedImage && (
-                    <div className="w-full flex items-center mt-4 bg-blue-50 border border-blue-100 p-3 rounded-lg">
-                      <input
-                        id="saveSignature"
-                        type="checkbox"
-                        checked={saveForFuture}
-                        onChange={(e) => setSaveForFuture(e.target.checked)}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-300 rounded cursor-pointer"
-                      />
-                      <label htmlFor="saveSignature" className="ml-2 block text-sm text-blue-900 font-medium cursor-pointer">
-                        Save this signature for future use.
-                      </label>
+                    <div className="w-full mt-4 bg-blue-50 border border-blue-100 p-3 rounded-lg text-left">
+                      <div className="flex items-center">
+                        <input
+                          id="saveSignature"
+                          type="checkbox"
+                          checked={saveForFuture}
+                          onChange={async (e) => {
+                            const isChecked = e.target.checked;
+                            setSaveForFuture(isChecked);
+                            if (isChecked) {
+                              setIsCheckingSecurity(true);
+                              try {
+                                const res = await api.get(`/api/signatures/security-status?email=${signerInfo.email}`);
+                                setHasExistingPin(res.data.hasPin);
+                              } catch (error) {}
+                              setIsCheckingSecurity(false);
+                            } else {
+                              setVaultPin('');
+                            }
+                          }}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-300 rounded cursor-pointer"
+                        />
+                        <label htmlFor="saveSignature" className="ml-2 block text-sm text-blue-900 font-medium cursor-pointer">
+                          Save this signature for future use.
+                        </label>
+                      </div>
+
+                      {/* INLINE UPLOAD PIN UI */}
+                      {saveForFuture && (
+                        <div className="mt-4 p-4 border border-blue-200 bg-white rounded-lg animate-in slide-in-from-top-2 fade-in duration-200">
+                          {isCheckingSecurity ? (
+                            <div className="flex items-center justify-center text-blue-600 py-2">
+                              <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mr-2"></div>
+                              <span className="text-xs font-medium">Checking security status...</span>
+                            </div>
+                          ) : isResettingPin ? (
+                            <div className="text-left animate-in fade-in duration-200">
+                              <label className="block text-sm font-semibold text-amber-900 mb-1">Reset Vault PIN</label>
+                              <p className="text-xs text-amber-700 mb-3">Enter the 6-digit code sent to your email and a new 4-digit PIN.</p>
+                              <div className="flex space-x-2 mb-3">
+                                <input 
+                                  type="text" maxLength="6"
+                                  value={resetOtp}
+                                  onChange={(e) => setResetOtp(e.target.value.replace(/\D/g, ''))}
+                                  className="w-1/2 px-3 py-2 border border-amber-300 rounded focus:ring-2 focus:ring-amber-500 text-center tracking-widest bg-white text-sm"
+                                  placeholder="6-Digit OTP"
+                                />
+                                <input 
+                                  type="password" maxLength="4"
+                                  value={newPin}
+                                  onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+                                  className="w-1/2 px-3 py-2 border border-amber-300 rounded focus:ring-2 focus:ring-amber-500 text-center tracking-widest bg-white text-sm"
+                                  placeholder="New 4-Digit PIN"
+                                />
+                              </div>
+                              <div className="flex space-x-2">
+                                <button 
+                                  type="button" 
+                                  onClick={() => setIsResettingPin(false)}
+                                  className="flex-1 py-1.5 bg-white border border-amber-300 text-amber-800 rounded text-xs font-medium hover:bg-amber-50 transition-colors shadow-sm"
+                                >Cancel</button>
+                                <button 
+                                  type="button" 
+                                  onClick={() => handleConfirmPinReset()}
+                                  disabled={isConfirmingReset}
+                                  className="flex-1 py-1.5 bg-amber-600 text-white rounded text-xs font-medium hover:bg-amber-700 transition-colors shadow-sm disabled:opacity-75 disabled:cursor-not-allowed flex items-center justify-center"
+                                >
+                                  {isConfirmingReset ? (
+                                    <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1.5"></div> Resetting...</>
+                                  ) : 'Confirm Reset'}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <label className="flex items-center text-sm font-semibold text-slate-800 mb-1">
+                                <Lock className="h-3.5 w-3.5 mr-1.5 text-blue-600" />
+                                {hasExistingPin ? 'Enter Vault PIN to Save' : 'Create Vault PIN'}
+                              </label>
+                              <p className="text-xs text-slate-500 mb-3">
+                                {hasExistingPin 
+                                  ? 'Enter your existing 4-digit Signature Vault PIN to append this image.' 
+                                  : 'Create a 4-digit PIN to secure your signatures for future use.'}
+                              </p>
+                              <div className="flex items-center space-x-4">
+                                <PinInputBox pin={vaultPin} setPin={setVaultPin} />
+                                
+                                {hasExistingPin && (
+                                  <button 
+                                    type="button" 
+                                    onClick={() => handleForgotPin()} 
+                                    disabled={isRequestingReset}
+                                    className="text-xs font-medium text-blue-600 hover:text-blue-800 underline disabled:opacity-50 flex items-center"
+                                  >
+                                    {isRequestingReset ? (
+                                      <><div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mr-1"></div> Sending...</>
+                                    ) : 'Forgot PIN?'}
+                                  </button>
+                                )}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -770,69 +980,149 @@ export default function Sign() {
 
               {signMode === 'saved' && (
                 <div className="w-full border border-slate-300 rounded-lg bg-slate-50 p-4 min-h-[160px]">
-                  <p className="text-sm font-medium text-slate-700 mb-3">Select a saved signature:</p>
-                  <div className="grid grid-cols-2 gap-4">
-                    {savedSignatures.map((sig, index) => (
-                      <div 
-                        key={index}
-                        onClick={() => {
-                          // Prevent selecting the signature if they are in the middle of deleting it
-                          if (confirmDeleteId !== sig.id) setSelectedSavedSignature(sig);
-                        }}
-                        className={`cursor-pointer border-2 rounded-lg flex flex-col overflow-hidden bg-white transition-all ${
-                          selectedSavedSignature?.id === sig.id ? 'border-blue-600 ring-2 ring-blue-100' : 'border-slate-200 hover:border-slate-300'
-                        }`}
-                      >
-                        {confirmDeleteId === sig.id ? (
-                          /* INLINE CONFIRMATION STATE */
-                          <div className="flex flex-col h-full bg-red-50 justify-center items-center p-3 text-center animate-in fade-in duration-200">
-                            <p className="text-sm font-bold text-red-800 mb-1">Delete signature?</p>
-                            <p className="text-[10px] text-red-600 mb-3 leading-tight">This will permanently remove it from your account.</p>
-                            <div className="flex space-x-2 w-full mt-auto">
-                              <button 
-                                type="button"
-                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmDeleteId(null); }}
-                                className="flex-1 py-1.5 bg-white border border-slate-200 text-slate-600 rounded text-xs font-medium hover:bg-slate-50 transition-colors shadow-sm"
-                              >
-                                Cancel
-                              </button>
-                              <button 
-                                type="button"
-                                onClick={(e) => handleDeleteSignature(e, sig.id)}
-                                disabled={deletingId === sig.id}
-                                className="flex-1 py-1.5 bg-red-600 text-white rounded text-xs font-medium hover:bg-red-700 transition-colors shadow-sm disabled:opacity-50"
-                              >
-                                {deletingId === sig.id ? 'Removing...' : 'Confirm'}
-                              </button>
-                            </div>
+                  {savedSignatures[0]?.isProtected && !isVaultUnlocked ? (
+                    <div className="text-center py-4 animate-in fade-in duration-200">
+                      {!isResettingPin ? (
+                        <>
+                          <Lock className="h-8 w-8 text-slate-400 mx-auto mb-3" />
+                          <h4 className="font-semibold text-slate-800 mb-2">Vault Locked</h4>
+                          <p className="text-xs text-slate-500 mb-4">Enter your 4-digit PIN to access your saved signatures.</p>
+                          <div className="flex justify-center mb-5">
+                            <PinInputBox pin={vaultPin} setPin={setVaultPin} />
                           </div>
-                        ) : (
-                          /* NORMAL CARD STATE */
-                          <>
-                            <div className="h-24 p-2 flex items-center justify-center bg-slate-50 border-b border-slate-100">
-                              <img 
-                                crossOrigin="anonymous"
-                                src={sig.displayUrl} 
-                                alt="Saved Signature" 
-                                className="max-h-full max-w-full object-contain pointer-events-none" 
-                              />
-                            </div>
-                            
+                          <button 
+                            disabled={isUnlocking}
+                            onClick={async () => {
+                               if (vaultPin.length !== 4) return toast.error('PIN must be exactly 4 digits.');
+                               setIsUnlocking(true);
+                               try {
+                                 await api.post('/api/signatures/verify-vault', { email: signerInfo.email, pin: vaultPin });
+                                 setIsVaultUnlocked(true);
+                                 toast.success('Vault unlocked.');
+                               } catch (err) { 
+                                 toast.error('Incorrect PIN'); 
+                               } finally {
+                                 setIsUnlocking(false);
+                               }
+                            }}
+                            className="px-6 py-2 bg-slate-800 text-white rounded text-sm font-medium hover:bg-slate-900 shadow-sm flex items-center justify-center mx-auto disabled:opacity-75 disabled:cursor-not-allowed transition-all w-32"
+                          >
+                            {isUnlocking ? (
+                              <>
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                                Verifying
+                              </>
+                            ) : 'Unlock'}
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => handleForgotPin()} 
+                            disabled={isRequestingReset}
+                            className="block mx-auto mt-4 text-xs text-slate-500 hover:text-slate-700 underline disabled:opacity-50 flex items-center justify-center"
+                          >
+                            {isRequestingReset ? (
+                              <><div className="w-3 h-3 border-2 border-slate-500 border-t-transparent rounded-full animate-spin mr-1"></div> Sending...</>
+                            ) : 'Forgot PIN?'}
+                          </button>
+                        </>
+                      ) : (
+                        <div className="bg-white p-4 rounded border border-amber-200 shadow-sm text-left">
+                          <label className="block text-sm font-semibold text-amber-900 mb-1">Reset Vault PIN</label>
+                          <p className="text-xs text-amber-700 mb-3">Enter the 6-digit code sent to your email and a new 4-digit PIN.</p>
+                          <div className="flex space-x-2 mb-3">
+                            <input 
+                              type="text" maxLength="6"
+                              value={resetOtp}
+                              onChange={(e) => setResetOtp(e.target.value.replace(/\D/g, ''))}
+                              className="w-1/2 px-3 py-2 border border-amber-300 rounded focus:ring-2 focus:ring-amber-500 text-center tracking-widest bg-white text-sm"
+                              placeholder="6-Digit OTP"
+                            />
+                            <input 
+                              type="password" maxLength="4"
+                              value={newPin}
+                              onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+                              className="w-1/2 px-3 py-2 border border-amber-300 rounded focus:ring-2 focus:ring-amber-500 text-center tracking-widest bg-white text-sm"
+                              placeholder="New 4-Digit PIN"
+                            />
+                          </div>
+                          <div className="flex space-x-2">
                             <button 
-                              type="button"
-                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmDeleteId(sig.id); }}
-                              className="w-full py-2 flex items-center justify-center text-xs font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors"
+                              type="button" 
+                              onClick={() => setIsResettingPin(false)}
+                              className="flex-1 py-1.5 bg-white border border-amber-300 text-amber-800 rounded text-xs font-medium hover:bg-amber-50 transition-colors shadow-sm"
+                            >Cancel</button>
+                            <button 
+                              type="button" 
+                              onClick={() => handleConfirmPinReset()}
+                              disabled={isConfirmingReset}
+                              className="flex-1 py-1.5 bg-amber-600 text-white rounded text-xs font-medium hover:bg-amber-700 transition-colors shadow-sm disabled:opacity-75 disabled:cursor-not-allowed flex items-center justify-center"
                             >
-                              Remove <X className="h-3.5 w-3.5 ml-1" strokeWidth={2.5} />
+                              {isConfirmingReset ? (
+                                <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1.5"></div> Resetting...</>
+                              ) : 'Confirm Reset'}
                             </button>
-                          </>
-                        )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-slate-700 mb-3">Select a saved signature:</p>
+                      <div className="grid grid-cols-2 gap-4">
+                        {savedSignatures.map((sig, index) => (
+                          <div 
+                            key={index}
+                            onClick={() => {
+                              if (confirmDeleteId !== sig.id) {
+                                setSelectedSavedSignature(sig);
+                              }
+                            }}
+                            className={`cursor-pointer border-2 rounded-lg flex flex-col overflow-hidden bg-white transition-all ${
+                              selectedSavedSignature?.id === sig.id ? 'border-blue-600 ring-2 ring-blue-100' : 'border-slate-200 hover:border-slate-300'
+                            }`}
+                          >
+                            {confirmDeleteId === sig.id ? (
+                              <div className="flex flex-col h-full bg-red-50 justify-center items-center p-3 text-center animate-in fade-in duration-200">
+                                <p className="text-sm font-bold text-red-800 mb-1">Delete signature?</p>
+                                <p className="text-[10px] text-red-600 mb-3 leading-tight">This will permanently remove it from your account.</p>
+                                <div className="flex space-x-2 w-full mt-auto">
+                                  <button 
+                                    type="button"
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmDeleteId(null); }}
+                                    className="flex-1 py-1.5 bg-white border border-slate-200 text-slate-600 rounded text-xs font-medium hover:bg-slate-50 transition-colors shadow-sm"
+                                  >Cancel</button>
+                                  <button 
+                                    type="button"
+                                    onClick={(e) => handleDeleteSignature(e, sig.id)}
+                                    disabled={deletingId === sig.id}
+                                    className="flex-1 py-1.5 bg-red-600 text-white rounded text-xs font-medium hover:bg-red-700 transition-colors shadow-sm disabled:opacity-50"
+                                  >{deletingId === sig.id ? 'Removing...' : 'Confirm'}</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="relative h-24 p-2 flex items-center justify-center bg-slate-50 border-b border-slate-100">
+                                  <img 
+                                    crossOrigin="anonymous"
+                                    src={sig.displayUrl} 
+                                    alt="Saved Signature" 
+                                    className="max-h-full max-w-full object-contain pointer-events-none" 
+                                  />
+                                </div>
+                                <button 
+                                  type="button"
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmDeleteId(sig.id); }}
+                                  className="w-full py-2 flex items-center justify-center text-xs font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors"
+                                >Remove <X className="h-3.5 w-3.5 ml-1" strokeWidth={2.5} /></button>
+                              </>
+                            )}
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </>
+                  )}
                 </div>
               )}
-
 
               <p className="text-xs text-slate-500 text-center mt-4 mb-4">By adopting this signature, you agree that it is a legally binding electronic representation of your signature.</p>
 
