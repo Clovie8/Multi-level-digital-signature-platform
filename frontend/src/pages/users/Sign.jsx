@@ -17,6 +17,65 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString();
 
+
+const PinInputBox = ({ pin, setPin }) => {
+  const inputs = useRef([]);
+
+  const handleChange = (e, index) => {
+    const val = e.target.value.replace(/\D/g, '');
+    if (!val) return;
+
+    const newPin = pin.split('');
+    newPin[index] = val.slice(-1); 
+    setPin(newPin.join(''));
+
+    if (index < 3 && val) {
+      inputs.current[index + 1].focus();
+    }
+  };
+
+  const handleKeyDown = (e, index) => {
+    if (e.key === 'Backspace') {
+      const newPin = pin.split('');
+      newPin[index] = '';
+      setPin(newPin.join(''));
+      
+      if (index > 0) {
+        inputs.current[index - 1].focus();
+      }
+    }
+  };
+
+  const handlePaste = (e) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 4);
+    if (pasted) {
+      setPin(pasted);
+      const nextIndex = pasted.length < 4 ? pasted.length : 3;
+      inputs.current[nextIndex].focus();
+    }
+  };
+
+  return (
+    <div className="flex space-x-2">
+      {[0, 1, 2, 3].map((i) => (
+        <input
+          key={i}
+          ref={(el) => (inputs.current[i] = el)}
+          type="password"
+          maxLength="1"
+          value={pin[i] || ''}
+          onChange={(e) => handleChange(e, i)}
+          onKeyDown={(e) => handleKeyDown(e, i)}
+          onPaste={i === 0 ? handlePaste : undefined}
+          className="w-10 h-12 text-center text-xl font-bold border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm transition-all"
+        />
+      ))}
+    </div>
+  );
+};
+
+
 export default function Sign() {
   const { token } = useParams(); // Grab the secure token from the URL
   const navigate = useNavigate();
@@ -894,15 +953,9 @@ export default function Sign() {
                                   ? 'Enter your existing 4-digit Signature Vault PIN to append this image.' 
                                   : 'Create a 4-digit PIN to secure your signatures for future use.'}
                               </p>
-                              <div className="flex items-center space-x-3">
-                                <input
-                                  type="password"
-                                  maxLength="4"
-                                  value={vaultPin}
-                                  onChange={(e) => setVaultPin(e.target.value.replace(/\D/g, ''))}
-                                  className="w-24 px-3 py-2 text-center tracking-[0.3em] border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 bg-slate-50"
-                                  placeholder="****"
-                                />
+                              <div className="flex items-center space-x-4">
+                                <PinInputBox pin={vaultPin} setPin={setVaultPin} />
+                                
                                 {hasExistingPin && (
                                   <button 
                                     type="button" 
@@ -933,14 +986,10 @@ export default function Sign() {
                         <>
                           <Lock className="h-8 w-8 text-slate-400 mx-auto mb-3" />
                           <h4 className="font-semibold text-slate-800 mb-2">Vault Locked</h4>
-                          <p className="text-xs text-slate-500 mb-3">Enter your 4-digit PIN to access your saved signatures.</p>
-                          <input 
-                            type="password" maxLength="4"
-                            value={vaultPin}
-                            onChange={(e) => setVaultPin(e.target.value.replace(/\D/g, ''))}
-                            className="w-24 px-3 py-2 text-center tracking-[0.3em] border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 mx-auto block mb-3 bg-white"
-                            placeholder="****"
-                          />
+                          <p className="text-xs text-slate-500 mb-4">Enter your 4-digit PIN to access your saved signatures.</p>
+                          <div className="flex justify-center mb-5">
+                            <PinInputBox pin={vaultPin} setPin={setVaultPin} />
+                          </div>
                           <button 
                             disabled={isUnlocking}
                             onClick={async () => {
