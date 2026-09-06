@@ -278,7 +278,15 @@ function RowActions({ document, onView, onVoided }) {
   } else {
     items.push({ key: 'view', label: 'View', icon: Eye, onClick: () => onView(document.id) });
   }
-  if (document.status === 'in_progress' || document.status === 'pending') {
+  if (document.pendingSignerToken) {
+    items.push({ 
+      key: 'sign', 
+      label: 'Sign Document', 
+      icon: FileSignature, 
+      onClick: () => navigate(`/sign/${document.pendingSignerToken}`) 
+    });
+  }
+  if ((document.status === 'in_progress' || document.status === 'pending') && !document.pendingSignerToken) {
     items.push({ key: 'remind', label: isSendingReminder ? 'Sending…' : 'Send reminder', icon: Bell, onClick: handleSendReminder, disabled: isSendingReminder });
   }
   if (document.status === 'completed') {
@@ -738,6 +746,14 @@ export default function Documents() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [checkedIds, setCheckedIds] = useState(new Set());
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, statusFilter, searchQuery]);
+
+
   const fetchDocuments = useCallback(async () => {
     try {
       const res = await api.get('/api/documents');
@@ -818,6 +834,14 @@ export default function Documents() {
       return true;
     });
   }, [documents, activeTab, statusFilter, searchQuery, currentUser]);
+
+  const paginatedDocuments = useMemo(() => {
+  const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredDocuments.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredDocuments, currentPage, itemsPerPage]);
+
+  const totalPages = Math.ceil(filteredDocuments.length / itemsPerPage);
+
 
   const toggleCheck = (id) => {
     setCheckedIds((prev) => {
@@ -948,6 +972,7 @@ export default function Documents() {
               </p>
             </div>
           ) : (
+            <>
             <div className="overflow-visible min-h-[250px]">
               <table className="w-full text-left table-fixed">
                 <colgroup>
@@ -980,7 +1005,7 @@ export default function Documents() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredDocuments.map((document) => (
+                   {paginatedDocuments.map((document) => (
                     <DocumentTableRow
                       key={document.id}
                       document={document}
@@ -994,6 +1019,46 @@ export default function Documents() {
                 </tbody>
               </table>
             </div>
+          
+            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-500">Show</span>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => {
+                    setItemsPerPage(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="text-sm font-medium text-slate-700 border border-slate-200 rounded-md py-1 px-2 focus:ring-slate-900 focus:border-slate-900 outline-none cursor-pointer"
+                >
+                  <option value={10}>10</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+                <span className="text-sm text-slate-500">entries</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1 text-sm font-medium text-slate-600 bg-slate-50 rounded-md border border-slate-200 hover:bg-slate-100 disabled:opacity-50 transition-colors"
+                >
+                  Previous
+                </button>
+                <span className="text-sm font-medium text-slate-700">
+                  Page {currentPage} of {totalPages || 1}
+                </span>
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+                  disabled={currentPage === totalPages || totalPages === 0}
+                  className="px-3 py-1 text-sm font-medium text-slate-600 bg-slate-50 rounded-md border border-slate-200 hover:bg-slate-100 disabled:opacity-50 transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+            </>
+
           )}
         </div>
       </div>

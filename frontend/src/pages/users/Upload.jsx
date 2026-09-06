@@ -76,6 +76,10 @@ export default function Upload() {
     { id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200', receivesFinalCopy: true }
   ]);
 
+  const [userSuggestions, setUserSuggestions] = useState([]);
+  const [activeSearchIndex, setActiveSearchIndex] = useState(null);
+
+
   // Canvas State (Preparation Phase)
   const [activeSignerId, setActiveSignerId] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
@@ -106,6 +110,60 @@ export default function Upload() {
     };
     loadDraft();
   }, [editDocumentId, navigate]);
+
+
+  // LocalStorage Auto-Save & Hydration 
+  const CACHE_KEY = 'upload_draft_state';
+
+  // Hydrate from cache on mount (if NOT explicitly editing a draft)
+  useEffect(() => {
+    if (editDocumentId) return; // Skip if they clicked "Edit" on a draft
+
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (parsed.documentId) {
+          // Fetch the file URL from the backend so the PDF can render
+          const loadCachedDraft = async () => {
+            try {
+              const res = await api.get(`/api/documents/${parsed.documentId}/file`);
+              setExistingFile({ url: res.data.url, fileName: res.data.fileName });
+              
+              setDocumentId(parsed.documentId);
+              setCurrentStep(parsed.currentStep || 2);
+              if (parsed.signers) setSigners(parsed.signers);
+              if (parsed.fields) setFields(parsed.fields);
+              if (parsed.isInitiatorFirst !== undefined) setIsInitiatorFirst(parsed.isInitiatorFirst);
+              if (parsed.initiatorReceivesFinalCopy !== undefined) setInitiatorReceivesFinalCopy(parsed.initiatorReceivesFinalCopy);
+            } catch (err) {
+              // If the document was deleted on the server, clear the dead cache
+              localStorage.removeItem(CACHE_KEY);
+            }
+          };
+          loadCachedDraft();
+        }
+      } catch (err) {
+        console.error('Failed to parse cached upload state', err);
+      }
+    }
+  }, [editDocumentId]);
+
+  // Auto-save to cache whenever state changes
+  useEffect(() => {
+    if (!documentId) return; 
+    
+    const stateToCache = {
+      documentId,
+      currentStep,
+      isInitiatorFirst,
+      initiatorReceivesFinalCopy,
+      signers,
+      fields
+    };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(stateToCache));
+  }, [documentId, currentStep, isInitiatorFirst, initiatorReceivesFinalCopy, signers, fields]);
+
 
   // UX State
   const [selectedFieldId, setSelectedFieldId] = useState(null);
@@ -219,6 +277,19 @@ export default function Upload() {
     const isValid = signers.every(s => s.name.trim() !== '' && s.email.trim() !== '');
     if (!isValid) return toast.error('Please fill out all signer details.');
 
+    // Check for duplicate emails (case-insensitive)
+    const emails = signers.map(s => s.email.trim().toLowerCase());
+    const uniqueEmails = new Set(emails);
+    if (uniqueEmails.size !== emails.length) {
+      return toast.error('Duplicate emails found. Each signer must have a unique email address.');
+    }
+    // Check for duplicate names (case-insensitive)
+    const names = signers.map(s => s.name.trim().toLowerCase());
+    const uniqueNames = new Set(names);
+    if (uniqueNames.size !== names.length) {
+      return toast.error('Duplicate names found. Each signer must have a unique name.');
+    }
+
     // Set the first signer active for the tagging canvas
     setActiveSignerId(signers[0].id);
     setCurrentStep(3);
@@ -236,6 +307,7 @@ export default function Upload() {
 
       await api.patch(`/api/documents/${documentId}/draft-config`, { signers: finalSigners, fields, isInitiatorFirst, initiatorReceivesFinalCopy, currentStep });
       toast.success('Saved as draft.');
+      localStorage.removeItem('upload_draft_state');
       navigate('/documents');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not save this draft.');
@@ -276,6 +348,7 @@ export default function Upload() {
       });
 
       toast.success(res.data.message);
+      localStorage.removeItem('upload_draft_state');
 
       if (res.data.isInitiatorFirst && res.data.redirectToken) {
         // Path A: Redirect instantly to signing canvas
@@ -345,13 +418,9 @@ export default function Upload() {
       setFields([...fields, ...newFields]);
       
       const currentField = newFields.find(f => f.page === currentPage);
-      if (currentField) setSelectedFieldId(currentField.id);
-      toast.success('Initial placed on all pages.');
-    } else {
-      if (fieldAlreadyExists) {
-        toast.error(`You have already placed a ${fieldType} for this signer.`);
-        return;
-      }
+        if (currentField) setSelectedFieldId(currentField.id);
+        toast.success('Initial placed on all pages.');
+      } else {
 
       // Calculate drop coordinates relative to the PDF container
       const bounds = e.currentTarget.getBoundingClientRect();
@@ -519,16 +588,52 @@ export default function Upload() {
                       {signer.role}
                     </span>
                   </div>
-                  <div className="w-full sm:w-1/3">
+                                    <div className="w-full sm:w-1/3 relative">
                     <input
                       type="text"
-                      placeholder="Signer Name"
+                      placeholder="Search name or email..."
                       value={signer.name}
                       disabled={signer.locked}
-                      onChange={(e) => handleSignerChange(index, 'name', e.target.value)}
+                      onChange={(e) => {
+                        handleSignerChange(index, 'name', e.target.value);
+                        
+                        // Trigger search if they typed at least 2 characters
+                        if (e.target.value.length >= 2) {
+                          setActiveSearchIndex(index);
+                          api.get(`/api/auth/users/search?q=${e.target.value}`)
+                             .then(res => setUserSuggestions(res.data.users))
+                             .catch(err => console.error(err));
+                        } else {
+                          setUserSuggestions([]);
+                        }
+                      }}
+                      // Delay hiding the dropdown so they have time to click a suggestion
+                      onBlur={() => setTimeout(() => setUserSuggestions([]), 200)}
                       className="block w-full text-sm border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900 disabled:bg-slate-50 disabled:text-slate-500 py-2 px-3 border"
                     />
+                    
+                    {/* The Auto-Complete Dropdown */}
+                    {activeSearchIndex === index && userSuggestions.length > 0 && (
+                      <ul className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                        {userSuggestions.map(u => (
+                          <li 
+                            key={u.id}
+                            // We use onMouseDown instead of onClick because onBlur fires before onClick
+                            onMouseDown={() => {
+                               handleSignerChange(index, 'name', u.name);
+                               handleSignerChange(index, 'email', u.email);
+                               setUserSuggestions([]);
+                            }}
+                            className="px-3 py-2 text-sm cursor-pointer hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
+                          >
+                            <div className="font-medium text-slate-900">{u.name}</div>
+                            <div className="text-xs text-slate-500">{u.email}</div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
+
                   <div className="w-full sm:w-1/3">
                     <input
                       type="email"
