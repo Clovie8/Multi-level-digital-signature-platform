@@ -162,7 +162,7 @@ export default function Dashboard() {
                 {needsAttention.map((item) => (
                   <div
                     key={item.id}
-                    onClick={() => navigate(`/sign/${item.accessToken}`)}
+                    onClick={() => window.open(`/sign/${item.accessToken}`, '_blank', 'noopener,noreferrer')}
                     className="flex items-center justify-between gap-4 px-2 py-2.5 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">

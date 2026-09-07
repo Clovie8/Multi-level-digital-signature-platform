@@ -283,7 +283,7 @@ function RowActions({ document, onView, onVoided }) {
       key: 'sign', 
       label: 'Sign Document', 
       icon: FileSignature, 
-      onClick: () => navigate(`/sign/${document.pendingSignerToken}`) 
+      onClick: () => window.open(`/sign/${document.pendingSignerToken}`,'_blank','noopener,noreferrer') 
     });
   }
   if ((document.status === 'in_progress' || document.status === 'pending') && !document.pendingSignerToken) {
@@ -727,6 +727,7 @@ function DeclineResolutionPanel({ document, onRefresh }) {
 const TABS = [
   { key: 'all', label: 'All documents' },
   { key: 'sent_by_you', label: 'Documents by you' },
+  { key: 'signed_by_me', label: 'Signed by me' },
   { key: 'needs_decision', label: 'Needs your decision' },
 ];
 
@@ -820,6 +821,12 @@ export default function Documents() {
     [documents]
   );
 
+  const signedByMeCount = useMemo(
+    () => documents.filter((d) => d.hasSigned).length,
+    [documents]
+  );
+
+
   const sentByYouCount = useMemo(
     () => documents.filter((d) => !d.initiatorId || d.initiatorId === currentUser?.id).length,
     [documents, currentUser]
@@ -831,6 +838,7 @@ export default function Documents() {
       if (activeTab === 'sent_by_you' && d.initiatorId && d.initiatorId !== currentUser?.id) return false;
       if (statusFilter !== 'all' && d.status !== statusFilter) return false;
       if (searchQuery && !d.fileName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      if (activeTab === 'signed_by_me' && !d.hasSigned) return false;
       return true;
     });
   }, [documents, activeTab, statusFilter, searchQuery, currentUser]);
@@ -894,6 +902,8 @@ export default function Documents() {
               ? documents.length
               : tab.key === 'sent_by_you'
                 ? sentByYouCount
+                : tab.key === 'signed_by_me'
+                ? signedByMeCount
                 : needsDecisionCount;
             const isActive = activeTab === tab.key;
             return (
