@@ -34,11 +34,33 @@ export default function Layout() {
 
   const handleSignOut = async () => {
     try {
+      // Auto-save draft before destroying the session
+      const cachedDraft = localStorage.getItem('upload_draft_state');
+      if (cachedDraft) {
+        try {
+          const parsed = JSON.parse(cachedDraft);
+          if (parsed.documentId) {
+            // Send the draft configuration to the server silently
+            await api.patch(`/api/documents/${parsed.documentId}/draft-config`, {
+              signers: parsed.signers,
+              fields: parsed.fields,
+              isInitiatorFirst: parsed.isInitiatorFirst,
+              initiatorReceivesFinalCopy: parsed.initiatorReceivesFinalCopy,
+              currentStep: parsed.currentStep
+            });
+          }
+        } catch (e) {
+          console.error('Failed to auto-save draft on logout', e);
+        }
+      }
+
+
       // Tell backend to destroy the HttpOnly cookie
       await api.post('/api/auth/logout', {});
 
       // Clear frontend auth flag
       localStorage.removeItem('isAuthenticated');
+      localStorage.removeItem('upload_draft_state');
 
       toast.success('Securely signed out.');
       navigate('/login', { replace: true });
@@ -46,6 +68,7 @@ export default function Layout() {
       console.error(err);
       // Even if network fails, we should kick them to login
       localStorage.removeItem('isAuthenticated');
+      localStorage.removeItem('upload_draft_state');
       navigate('/login', { replace: true });
     }
   };
