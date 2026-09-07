@@ -68,8 +68,8 @@ export default function Layout() {
     ...(user?.role !== 'admin' ? [{ name: 'Dashboard', href: '/', icon: Home }] : []),
     { name: 'Documents', href: '/documents', icon: FileSignature },
     { name: 'Upload', href: '/upload', icon: UploadCloud },
-    { name: 'Settings', href: '/settings', icon: Settings },
-    { name: 'Audit Logs', href: '/admin/audit-logs', icon: ScrollText },
+    { name: 'Settings', href: '/Settings', icon: Settings },
+    ...(user?.role === 'admin' ? [{ name: 'Audit Logs', href: '/admin/audit-logs', icon: ScrollText }] : []),
   ];
   // Dynamically set the Header Title based on the current URL route
   const getPageTitle = () => {
