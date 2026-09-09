@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
-import { Users, ShieldCheck, Plus, Search, MoreVertical, Loader2, X, Mail, User as UserIcon, UploadCloud, FileText } from 'lucide-react';
+import Select from 'react-select';
+import { Users, ShieldCheck, Plus, MoreVertical, Loader2, X, Mail, User as UserIcon, UploadCloud, FileText, Ban, CheckCircle2 } from 'lucide-react';
 
 const STATUS_META = {
   active: { label: 'Active', dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50' },
@@ -31,8 +32,13 @@ function RoleBadge({ role }) {
   );
 }
 
-const StatCard = ({ icon: Icon, value, label }) => (
-  <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-center gap-3">
+const StatCard = ({ icon: Icon, value, label, onClick, isActive }) => (
+  <button
+    onClick={onClick}
+    className={`text-left bg-white rounded-xl border shadow-sm p-5 flex items-center gap-3 transition-colors ${
+      isActive ? 'border-blue-500 ring-1 ring-blue-500' : 'border-slate-200 hover:border-slate-300'
+    }`}
+  >
     <div className="h-10 w-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
       <Icon className="h-5 w-5 text-slate-600" />
     </div>
@@ -40,18 +46,190 @@ const StatCard = ({ icon: Icon, value, label }) => (
       <p className="text-2xl font-semibold text-slate-900">{value}</p>
       <p className="text-xs font-medium text-slate-500">{label}</p>
     </div>
-  </div>
+  </button>
 );
+
+function ConfirmModal({ isOpen, title, message, confirmText, isDanger, onConfirm, onCancel }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4 animate-in fade-in" onClick={onCancel}>
+      <div
+        className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-2">{title}</h3>
+          <p className="text-sm text-slate-500 leading-relaxed">{message}</p>
+        </div>
+        <div className="bg-slate-50 border-t border-slate-100 p-4 flex justify-end gap-3">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-md transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              isDanger
+                ? 'bg-red-600 text-white hover:bg-red-700 focus:ring-2 focus:ring-red-600 focus:ring-offset-2'
+                : 'bg-slate-900 text-white hover:bg-slate-800 focus:ring-2 focus:ring-slate-900 focus:ring-offset-2'
+            }`}
+          >
+            {confirmText || 'Confirm'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UserActionsMenu({ user: targetUser, currentUserId, onActionComplete }) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [openUpward, setOpenUpward] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState(null);
+  const menuRef = useRef(null);
+  const buttonRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsMenuOpen(false);
+      }
+    };
+    window.document.addEventListener('mousedown', handleClickOutside);
+    return () => window.document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const toggleMenu = () => {
+    if (!isMenuOpen && buttonRef.current) {
+      const spaceBelow = window.innerHeight - buttonRef.current.getBoundingClientRect().bottom;
+      setOpenUpward(spaceBelow < 200);
+    }
+    setIsMenuOpen((prev) => !prev);
+  };
+
+  const isSelf = targetUser.id === currentUserId;
+
+  const handleToggleRole = async () => {
+    const newRole = targetUser.role === 'admin' ? 'user' : 'admin';
+    setIsMenuOpen(false);
+    setIsProcessing(true);
+    try {
+      await api.patch(`/api/admin/users/${targetUser.id}/role`, { role: newRole });
+      toast.success(`${targetUser.name} is now ${newRole === 'admin' ? 'an admin' : 'a regular user'}.`);
+      onActionComplete();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to update role.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const runToggleActive = async (deactivate) => {
+    setConfirmDialog(null);
+    setIsProcessing(true);
+    try {
+      const endpoint = deactivate ? 'deactivate' : 'reactivate';
+      await api.patch(`/api/admin/users/${targetUser.id}/${endpoint}`);
+      toast.success(`${targetUser.name} has been ${deactivate ? 'deactivated' : 'reactivated'}.`);
+      onActionComplete();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to update status.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleToggleActive = () => {
+    const isDeactivating = targetUser.status !== 'deactivated';
+    setIsMenuOpen(false);
+
+    if (!isDeactivating) {
+      runToggleActive(false);
+      return;
+    }
+
+    setConfirmDialog({
+      title: 'Deactivate User',
+      message: `Deactivate ${targetUser.name}? They won't be able to sign in until reactivated.`,
+      confirmText: 'Deactivate',
+      isDanger: true,
+      action: () => runToggleActive(true),
+    });
+  };
+
+  const menuItemCls = "w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
+  const dangerMenuItemCls = "w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
+
+  const items = [
+    {
+      key: 'role',
+      label: targetUser.role === 'admin' ? 'Make user' : 'Make admin',
+      icon: ShieldCheck,
+      onClick: handleToggleRole,
+    },
+    {
+      key: 'status',
+      label: targetUser.status === 'deactivated' ? 'Reactivate' : 'Deactivate',
+      icon: targetUser.status === 'deactivated' ? CheckCircle2 : Ban,
+      onClick: handleToggleActive,
+      danger: targetUser.status !== 'deactivated',
+    },
+  ];
+
+  return (
+    <div className="flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
+      <div className="relative" ref={menuRef}>
+        <button
+          ref={buttonRef}
+          onClick={toggleMenu}
+          disabled={isSelf}
+          className="h-8 w-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          title={isSelf ? "You can't modify your own account here" : 'Actions'}
+        >
+          <MoreVertical className="h-5 w-5" />
+        </button>
+
+        {isMenuOpen && !isSelf && (
+          <div className={`absolute right-0 w-48 bg-white rounded-xl shadow-lg border border-slate-100 py-1 z-30 ${openUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+            {items.map((item) => (
+              <button
+                key={item.key}
+                className={item.danger ? dangerMenuItemCls : menuItemCls}
+                disabled={isProcessing}
+                onClick={item.onClick}
+              >
+                <item.icon className={`h-4 w-4 ${item.danger ? 'text-red-400' : 'text-slate-400'}`} />
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <ConfirmModal
+        isOpen={!!confirmDialog}
+        title={confirmDialog?.title}
+        message={confirmDialog?.message}
+        confirmText={confirmDialog?.confirmText}
+        isDanger={confirmDialog?.isDanger}
+        onConfirm={confirmDialog?.action}
+        onCancel={() => setConfirmDialog(null)}
+      />
+    </div>
+  );
+}
 
 function InviteModal({ onClose, onInvited }) {
   const [tab, setTab] = useState('manual'); // 'manual' | 'csv'
 
-  // Manual invite state
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // CSV invite state
   const [csvFile, setCsvFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
@@ -115,7 +293,6 @@ function InviteModal({ onClose, onInvited }) {
           </button>
         </div>
 
-        {/* Tabs */}
         <div className="flex px-6 pt-4 gap-1">
           <button
             onClick={() => setTab('manual')}
@@ -173,7 +350,7 @@ function InviteModal({ onClose, onInvited }) {
                 {isSubmitting ? 'Sending...' : 'Send Invitation'}
               </button>
             </form>
-                    ) : (
+          ) : (
             <div className="space-y-4">
               <button
                 type="button"
@@ -241,6 +418,9 @@ export default function AdminDashboard() {
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedUserOption, setSelectedUserOption] = useState(null);
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [showInviteModal, setShowInviteModal] = useState(false);
 
   const fetchUsers = async () => {
@@ -258,20 +438,28 @@ export default function AdminDashboard() {
     fetchUsers();
   }, []);
 
-  const filteredUsers = users.filter((u) =>
-    u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredUsers = users.filter((u) => {
+    const matchesSearch = u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.email.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesRole = roleFilter === 'all' || u.role === roleFilter;
+    const matchesStatus = statusFilter === 'all' || u.status === statusFilter;
+    return matchesSearch && matchesRole && matchesStatus;
+  });
 
   const activeCount = users.filter((u) => u.status === 'active').length;
   const adminCount = users.filter((u) => u.role === 'admin').length;
-
-  const comingSoon = () => toast('Coming soon.');
 
   const handleInvited = () => {
     setShowInviteModal(false);
     fetchUsers();
   };
+
+  const resetFilters = () => {
+    setRoleFilter('all');
+    setStatusFilter('all');
+  };
+
+  const userOptions = users.map((u) => ({ value: u.id, label: `${u.name} — ${u.email}` }));
 
   return (
     <div className="min-h-full bg-white">
@@ -290,9 +478,27 @@ export default function AdminDashboard() {
 
         {/* Stats Row */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-          <StatCard icon={Users} value={users.length} label="Total users" />
-          <StatCard icon={ShieldCheck} value={activeCount} label="Active users" />
-          <StatCard icon={ShieldCheck} value={adminCount} label="Admins" />
+          <StatCard
+            icon={Users}
+            value={users.length}
+            label="Total users"
+            onClick={resetFilters}
+            isActive={roleFilter === 'all' && statusFilter === 'all'}
+          />
+          <StatCard
+            icon={ShieldCheck}
+            value={activeCount}
+            label="Active users"
+            onClick={() => { setStatusFilter('active'); setRoleFilter('all'); }}
+            isActive={statusFilter === 'active'}
+          />
+          <StatCard
+            icon={ShieldCheck}
+            value={adminCount}
+            label="Admins"
+            onClick={() => { setRoleFilter('admin'); setStatusFilter('all'); }}
+            isActive={roleFilter === 'admin'}
+          />
         </div>
 
         {/* User Management */}
@@ -303,13 +509,25 @@ export default function AdminDashboard() {
               <p className="text-xs text-slate-400 mt-0.5">Invite, deactivate, and edit roles</p>
             </div>
             <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                <input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+              <div className="w-64">
+                <Select
+                  options={userOptions}
+                  value={selectedUserOption}
+                  onChange={(option) => {
+                    setSelectedUserOption(option);
+                    setSearchQuery(option ? option.label.split(' — ')[0] : '');
+                  }}
+                  onInputChange={(value, { action }) => {
+                    if (action === 'input-change') setSearchQuery(value);
+                  }}
                   placeholder="Search users..."
-                  className="pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900 w-48"
+                  isClearable
+                  classNamePrefix="react-select"
+                  maxMenuHeight={3*40}
+                  styles={{
+                    control: (base) => ({ ...base, minHeight: '34px', fontSize: '13px', borderColor: '#e2e8f0' }),
+                    menu: (base) => ({ ...base, fontSize: '13px' }),
+                  }}
                 />
               </div>
               <button
@@ -354,12 +572,7 @@ export default function AdminDashboard() {
                       <StatusPill status={u.status} />
                     </td>
                     <td className="px-5 py-3 text-right">
-                      <button
-                        onClick={comingSoon}
-                        className="h-8 w-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors ml-auto"
-                      >
-                        <MoreVertical className="h-4 w-4" />
-                      </button>
+                      <UserActionsMenu user={u} currentUserId={user?.id} onActionComplete={fetchUsers} />
                     </td>
                   </tr>
                 ))}
