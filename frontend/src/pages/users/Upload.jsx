@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import {
-  UploadCloud, Users, FileSignature, CheckCircle, Plus, Trash2, ArrowRight,
-  PenTool, Calendar, Type, UserSquare, ChevronLeft, ChevronRight, Search, Send, X
+  UploadCloud, Users, FileSignature, CheckCircle, Plus, Trash2,
+  ArrowRight, PenTool, Calendar, Type, UserSquare, ChevronLeft, ChevronRight, Search, Send, X
 } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Rnd } from 'react-rnd';
@@ -16,20 +16,49 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString();
 
-export default function Dashboard() {
+// --- TOP-LEVEL COMPONENTS (moved out of Upload to avoid remounting on every render) ---
+
+const StepIcon = ({ stepNumber, current, icon: Icon, title }) => {
+  const isActive = current === stepNumber;
+  const isPast = current > stepNumber;
+  return (
+    <div className={`flex flex-col items-center ${isActive ? 'opacity-100' : 'opacity-40'}`}>
+      <div className={`h-10 w-10 rounded-full flex items-center justify-center mb-2 transition-colors ${isActive ? 'bg-slate-900 text-white shadow-md' : isPast ? 'bg-green-500 text-white' : 'bg-slate-200 text-slate-500'
+        }`}>
+        {isPast ? <CheckCircle className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
+      </div>
+      <span className={`text-xs font-medium ${isActive ? 'text-slate-900' : 'text-slate-500'}`}>{title}</span>
+    </div>
+  );
+};
+
+const DraggableField = ({ icon: Icon, label, type, activeColorClasses, onDragStart }) => (
+  <div
+    draggable
+    onDragStart={(e) => onDragStart(e, type)}
+    className={`flex items-center p-2 mb-2 bg-white border-l-4 ${activeColorClasses.split(' ')[2].replace('-200', '-500')} rounded shadow-sm cursor-grab hover:shadow transition-all`}
+  >
+    <Icon className={`h-3.5 w-3.5 mr-2 ${activeColorClasses.split(' ')[1].replace('-700', '-600')}`} />
+    <span className="text-xs font-medium text-slate-700">{label}</span>
+  </div>
+);
+
+export default function Upload() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const editDocumentId = searchParams.get('edit');
 
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const res = await axios.get('http://localhost:5000/api/auth/me', { withCredentials: true });
+        const res = await api.get('/api/auth/me');
         setCurrentUser(res.data);
       } catch (err) {
-        console.error('Failed to fetch user in Dashboard');
+        console.error(err);
       }
     };
     fetchUser();
@@ -37,20 +66,105 @@ export default function Dashboard() {
 
   // Workflow State
   const [file, setFile] = useState(null);
+  const [existingFile, setExistingFile] = useState(null); // { url, fileName } — draft being edited
   const [documentId, setDocumentId] = useState(null);
 
   // Signer Hierarchy State
   const [isInitiatorFirst, setIsInitiatorFirst] = useState(false);
+  const [initiatorReceivesFinalCopy, setInitiatorReceivesFinalCopy] = useState(true);
   const [signers, setSigners] = useState([
-    { id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200' }
+    { id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200', receivesFinalCopy: true }
   ]);
+
+  const [userSuggestions, setUserSuggestions] = useState([]);
+  const [activeSearchIndex, setActiveSearchIndex] = useState(null);
+
 
   // Canvas State (Preparation Phase)
   const [activeSignerId, setActiveSignerId] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [fields, setFields] = useState([]);
-  
+
+  useEffect(() => {
+    if (!editDocumentId) return;
+
+    const loadDraft = async () => {
+      try {
+        const res = await api.get(`/api/documents/${editDocumentId}/file`);
+        setDocumentId(editDocumentId);
+        setExistingFile({ url: res.data.url, fileName: res.data.fileName });
+
+        const draftConfig = res.data.draftConfig;
+        if (draftConfig) {
+          if (draftConfig.signers?.length) setSigners(draftConfig.signers);
+          if (draftConfig.fields?.length) setFields(draftConfig.fields);
+          if (draftConfig.isInitiatorFirst !== undefined) setIsInitiatorFirst(draftConfig.isInitiatorFirst);
+          if (draftConfig.initiatorReceivesFinalCopy !== undefined) setInitiatorReceivesFinalCopy(draftConfig.initiatorReceivesFinalCopy);
+          if (draftConfig.currentStep) setCurrentStep(draftConfig.currentStep);
+        }
+      } catch (err) {
+        toast.error(err.response?.data?.error || 'Could not load this draft.');
+        navigate('/documents');
+      }
+    };
+    loadDraft();
+  }, [editDocumentId, navigate]);
+
+
+  // LocalStorage Auto-Save & Hydration 
+  const CACHE_KEY = 'upload_draft_state';
+
+  // Hydrate from cache on mount (if NOT explicitly editing a draft)
+  useEffect(() => {
+    if (editDocumentId) return; // Skip if they clicked "Edit" on a draft
+
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (parsed.documentId) {
+          // Fetch the file URL from the backend so the PDF can render
+          const loadCachedDraft = async () => {
+            try {
+              const res = await api.get(`/api/documents/${parsed.documentId}/file`);
+              setExistingFile({ url: res.data.url, fileName: res.data.fileName });
+              
+              setDocumentId(parsed.documentId);
+              setCurrentStep(parsed.currentStep || 2);
+              if (parsed.signers) setSigners(parsed.signers);
+              if (parsed.fields) setFields(parsed.fields);
+              if (parsed.isInitiatorFirst !== undefined) setIsInitiatorFirst(parsed.isInitiatorFirst);
+              if (parsed.initiatorReceivesFinalCopy !== undefined) setInitiatorReceivesFinalCopy(parsed.initiatorReceivesFinalCopy);
+            } catch (err) {
+              // If the document was deleted on the server, clear the dead cache
+              localStorage.removeItem(CACHE_KEY);
+            }
+          };
+          loadCachedDraft();
+        }
+      } catch (err) {
+        console.error('Failed to parse cached upload state', err);
+      }
+    }
+  }, [editDocumentId]);
+
+  // Auto-save to cache whenever state changes
+  useEffect(() => {
+    if (!documentId) return; 
+    
+    const stateToCache = {
+      documentId,
+      currentStep,
+      isInitiatorFirst,
+      initiatorReceivesFinalCopy,
+      signers,
+      fields
+    };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(stateToCache));
+  }, [documentId, currentStep, isInitiatorFirst, initiatorReceivesFinalCopy, signers, fields]);
+
+
   // UX State
   const [selectedFieldId, setSelectedFieldId] = useState(null);
   const [isSignerDropdownOpen, setIsSignerDropdownOpen] = useState(false);
@@ -58,12 +172,6 @@ export default function Dashboard() {
   const onDocumentLoadSuccess = ({ numPages }) => {
     setTotalPages(numPages);
     setCurrentPage(1);
-  };
-
-  const handleSignOut = () => {
-    localStorage.clear();
-    toast.success('Securely signed out.');
-    navigate('/login', { replace: true });
   };
 
   // 1: UPLOAD HANDLERS
@@ -77,6 +185,12 @@ export default function Dashboard() {
   };
 
   const handleUploadSubmit = async () => {
+    // Editing a draft and keeping its existing file — nothing to upload, just move on.
+    if (!file && existingFile) {
+      setCurrentStep(2);
+      return;
+    }
+
     if (!file) return toast.error('Please select a file first.');
 
     setIsLoading(true);
@@ -84,19 +198,22 @@ export default function Dashboard() {
     formData.append('pdf_file', file);
 
     try {
-      const token = localStorage.getItem('token');
-      const res = await axios.post('http://localhost:5000/api/documents/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      setDocumentId(res.data.document.id);
-      toast.success('Document secured in Cloudflare R2.');
+      if (existingFile) {
+        // Editing a draft and replacing its file.
+        await api.post(`/api/documents/${documentId}/file`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        toast.success('File replaced.');
+      } else {
+        const res = await api.post('/api/documents/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        setDocumentId(res.data.document.id);
+        toast.success('Document secured in Cloudflare R2.');
+      }
       setCurrentStep(2);
     } catch (error) {
-      toast.error('Upload failed. Check your connection.');
+      toast.error(error.response?.data?.error || 'Upload failed. Check your connection.');
       console.error(error);
     } finally {
       setIsLoading(false);
@@ -133,7 +250,8 @@ export default function Dashboard() {
       name: '',
       email: '',
       role: `Level ${newIndex + 1} Signer`,
-      color: signerColors[newIndex]
+      color: signerColors[newIndex],
+      receivesFinalCopy: true
     }]);
   };
 
@@ -159,31 +277,79 @@ export default function Dashboard() {
     const isValid = signers.every(s => s.name.trim() !== '' && s.email.trim() !== '');
     if (!isValid) return toast.error('Please fill out all signer details.');
 
+    // Check for duplicate emails (case-insensitive)
+    const emails = signers.map(s => s.email.trim().toLowerCase());
+    const uniqueEmails = new Set(emails);
+    if (uniqueEmails.size !== emails.length) {
+      return toast.error('Duplicate emails found. Each signer must have a unique email address.');
+    }
+    // Check for duplicate names (case-insensitive)
+    const names = signers.map(s => s.name.trim().toLowerCase());
+    const uniqueNames = new Set(names);
+    if (uniqueNames.size !== names.length) {
+      return toast.error('Duplicate names found. Each signer must have a unique name.');
+    }
+
     // Set the first signer active for the tagging canvas
     setActiveSignerId(signers[0].id);
     setCurrentStep(3);
   };
 
+  const handleSaveAsDraft = async () => {
+    setIsLoading(true);
+    try {
+      const finalSigners = signers.map((s, idx) => {
+        if (isInitiatorFirst && idx === 0) {
+          return { ...s, receivesFinalCopy: initiatorReceivesFinalCopy };
+        }
+        return s;
+      });
+
+      await api.patch(`/api/documents/${documentId}/draft-config`, { signers: finalSigners, fields, isInitiatorFirst, initiatorReceivesFinalCopy, currentStep });
+      toast.success('Saved as draft.');
+      localStorage.removeItem('upload_draft_state');
+      navigate('/documents');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not save this draft.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // DISPATCH HANDLER
   const handleDispatchDocument = async () => {
+    // Validation: Check if every signer has at least one field assigned
+    const signersWithoutFields = signers.filter(s => !fields.some(f => f.signerId === s.id));
+    if (signersWithoutFields.length > 0) {
+      return toast.error(`Please assign at least one field to: ${signersWithoutFields.map(s => s.name || s.role).join(', ')}`);
+    }
+
     setIsLoading(true);
-    
+
     try {
       const token = localStorage.getItem('token');
-      
+
+      const finalSigners = signers.map((s, idx) => {
+        if (isInitiatorFirst && idx === 0) {
+          return { ...s, receivesFinalCopy: initiatorReceivesFinalCopy };
+        }
+        return s;
+      });
+
       // We now include the dragged 'fields' in the payload
-      const res = await axios.post(`http://localhost:5000/api/documents/${documentId}/dispatch`, {
-        signers: signers,
-        fields: fields 
+      const res = await api.post(`/api/documents/${documentId}/dispatch`, {
+        signers: finalSigners,
+        fields: fields,
+        initiatorReceivesFinalCopy: initiatorReceivesFinalCopy
       }, {
         headers: {
           'Authorization': `Bearer ${token}`
-        },
-        withCredentials: true
+        }
       });
-      
+
       toast.success(res.data.message);
-      
+      localStorage.removeItem('upload_draft_state');
+
       if (res.data.isInitiatorFirst && res.data.redirectToken) {
         // Path A: Redirect instantly to signing canvas
         navigate(`/sign/${res.data.redirectToken}`);
@@ -193,7 +359,7 @@ export default function Dashboard() {
         setFile(null);
         setDocumentId(null);
         setFields([]);
-        setSigners([{ id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200' }]);
+        setSigners([{ id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200', receivesFinalCopy: true }]);
       }
     } catch (error) {
       console.error(error);
@@ -217,30 +383,71 @@ export default function Dashboard() {
     const fieldType = e.dataTransfer.getData('fieldType');
     if (!fieldType) return;
 
-    // Calculate drop coordinates relative to the PDF container
-    const bounds = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - bounds.left;
-    const y = e.clientY - bounds.top;
+    const fieldAlreadyExists = fields.some(
+      (f) => f.type === fieldType && f.signerId === activeSignerId
+    );
 
-    const xPct = (x / bounds.width) * 100;
-    const yPct = (y / bounds.height) * 100;
+    if (fieldType === 'Initial') {
+      if (fieldAlreadyExists) {
+        toast.error(`You have already placed an Initial for this signer.`);
+        return;
+      }
+      
+      const bounds = e.currentTarget.getBoundingClientRect();
+      const x = e.clientX - bounds.left;
+      const y = e.clientY - bounds.top;
+      const xPct = (x / bounds.width) * 100;
+      const yPct = (y / bounds.height) * 100;
 
-    const newField = {
-      id: `field_${Date.now()}`,
-      type: fieldType,
-      signerId: activeSignerId,
-      page: currentPage,
-      x: x,
-      y: y,
-      xPct: xPct,
-      yPct: yPct,
-      width: fieldType === 'Text Box' ? 150 : 100,
-      height: fieldType === 'Text Box' ? 30 : 35,
-      required: true
-    };
+      const newFields = [];
+      for (let i = 1; i <= totalPages; i++) {
+        newFields.push({
+          id: `field_${Date.now()}_${i}`,
+          type: fieldType,
+          signerId: activeSignerId,
+          page: i,
+          x: x,
+          y: y,
+          xPct: xPct,
+          yPct: yPct,
+          width: 100,
+          height: 35,
+          required: true
+        });
+      }
+      setFields([...fields, ...newFields]);
+      
+      const currentField = newFields.find(f => f.page === currentPage);
+        if (currentField) setSelectedFieldId(currentField.id);
+        toast.success('Initial placed on all pages.');
+      } else {
 
-    setFields([...fields, newField]);
-    setSelectedFieldId(newField.id); // Auto-select new field
+      // Calculate drop coordinates relative to the PDF container
+      const bounds = e.currentTarget.getBoundingClientRect();
+      const x = e.clientX - bounds.left;
+      const y = e.clientY - bounds.top;
+
+      const xPct = (x / bounds.width) * 100;
+      const yPct = (y / bounds.height) * 100;
+
+      const newField = {
+        id: `field_${Date.now()}`,
+        type: fieldType,
+        signerId: activeSignerId,
+        page: currentPage,
+        x: x,
+        y: y,
+        xPct: xPct,
+        yPct: yPct,
+        width: fieldType === 'Text Box' ? 150 : 100,
+        height: fieldType === 'Text Box' ? 30 : 35,
+        required: true
+      };
+
+      setFields([...fields, newField]);
+      setSelectedFieldId(newField.id); // Auto-select new field
+    }
+
   };
 
   const updateFieldPosition = (id, newX, newY) => {
@@ -250,49 +457,45 @@ export default function Dashboard() {
     const xPct = (newX / bounds.width) * 100;
     const yPct = (newY / bounds.height) * 100;
 
-    setFields(prev => prev.map(f => f.id === id ? { ...f, x: newX, y: newY, xPct: xPct, yPct: yPct } : f));
+    const targetField = fields.find(f => f.id === id);
+    if (targetField && targetField.type === 'Initial') {
+      setFields(prev => prev.map(f => (f.type === 'Initial' && f.signerId === targetField.signerId) ? { ...f, x: newX, y: newY, xPct: xPct, yPct: yPct } : f));
+    } else {
+      setFields(prev => prev.map(f => f.id === id ? { ...f, x: newX, y: newY, xPct: xPct, yPct: yPct } : f));
+    }
   };
 
   const updateFieldSize = (id, width, height) => {
-    setFields(prev => prev.map(f => f.id === id ? { ...f, width, height } : f));
+    const targetField = fields.find(f => f.id === id);
+    if (targetField && targetField.type === 'Initial') {
+      setFields(prev => prev.map(f => (f.type === 'Initial' && f.signerId === targetField.signerId) ? { ...f, width, height } : f));
+    } else {
+      setFields(prev => prev.map(f => f.id === id ? { ...f, width, height } : f));
+    }
   };
 
+
   const updateFieldProperty = (id, property, value) => {
-    setFields(prev => prev.map(f => f.id === id ? { ...f, [property]: value } : f));
+    const targetField = fields.find(f => f.id === id);
+    if (targetField && targetField.type === 'Initial') {
+      setFields(prev => prev.map(f => (f.type === 'Initial' && f.signerId === targetField.signerId) ? { ...f, [property]: value } : f));
+    } else {
+      setFields(prev => prev.map(f => f.id === id ? { ...f, [property]: value } : f));
+    }
   };
 
   const deleteField = (id) => {
-    setFields(prev => prev.filter(f => f.id !== id));
-  };
-
-  // --- UI HELPERS ---
-  const StepIcon = ({ stepNumber, current, icon: Icon, title }) => {
-    const isActive = current === stepNumber;
-    const isPast = current > stepNumber;
-    return (
-      <div className={`flex flex-col items-center ${isActive ? 'opacity-100' : 'opacity-40'}`}>
-        <div className={`h-10 w-10 rounded-full flex items-center justify-center mb-2 transition-colors ${isActive ? 'bg-slate-900 text-white shadow-md' : isPast ? 'bg-green-500 text-white' : 'bg-slate-200 text-slate-500'
-          }`}>
-          {isPast ? <CheckCircle className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
-        </div>
-        <span className={`text-xs font-medium ${isActive ? 'text-slate-900' : 'text-slate-500'}`}>{title}</span>
-      </div>
-    );
+    const targetField = fields.find(f => f.id === id);
+    if (targetField && targetField.type === 'Initial') {
+      setFields(prev => prev.filter(f => !(f.type === 'Initial' && f.signerId === targetField.signerId)));
+    } else {
+      setFields(prev => prev.filter(f => f.id !== id));
+    }
   };
 
   const activeSigner = signers.find(s => s.id === activeSignerId) || signers[0];
+  const canvasFileSource = file || existingFile?.url || null;
   const activeColorClasses = activeSigner.color; // e.g. "bg-blue-100 text-blue-700 border-blue-200"
-
-  const DraggableField = ({ icon: Icon, label, type }) => (
-    <div 
-      draggable
-      onDragStart={(e) => handleDragStart(e, type)}
-      className={`flex items-center p-2 mb-2 bg-white border-l-4 ${activeColorClasses.split(' ')[2].replace('-200', '-500')} rounded shadow-sm cursor-grab hover:shadow transition-all`}
-    >
-      <Icon className={`h-3.5 w-3.5 mr-2 ${activeColorClasses.split(' ')[1].replace('-700', '-600')}`} />
-      <span className="text-xs font-medium text-slate-700">{label}</span>
-    </div>
-  );
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] font-sans pb-12">
@@ -321,18 +524,20 @@ export default function Dashboard() {
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               />
               <div className="flex flex-col items-center pointer-events-none">
-                <UploadCloud className={`h-12 w-12 mb-4 transition-colors ${file ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
+                <UploadCloud className={`h-12 w-12 mb-4 transition-colors ${file || existingFile ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
                 <span className="text-sm font-medium text-slate-900">
-                  {file ? file.name : 'Click to browse or drag PDF here'}
+                  {file ? file.name : existingFile ? existingFile.fileName : 'Click to browse or drag PDF here'}
                 </span>
-                <span className="text-xs text-slate-500 mt-2">Maximum file size: 10MB</span>
+                <span className="text-xs text-slate-500 mt-2">
+                  {existingFile && !file ? 'Drop a new PDF here to replace it' : 'Maximum file size: 10MB'}
+                </span>
               </div>
             </div>
 
             <div className="mt-8 flex justify-end">
               <button
                 onClick={handleUploadSubmit}
-                disabled={isLoading || !file}
+                disabled={isLoading || (!file && !existingFile)}
                 className="flex items-center py-2.5 px-6 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors disabled:opacity-50"
               >
                 {isLoading ? 'Uploading securely...' : 'Continue to Hierarchy'} <ArrowRight className="ml-2 h-4 w-4" />
@@ -347,17 +552,32 @@ export default function Dashboard() {
             <h2 className="text-2xl font-semibold text-slate-900 mb-2">Define Routing Hierarchy</h2>
             <p className="text-slate-500 text-sm mb-6">Who needs to sign this document? The system will route it sequentially from Level 1 downwards.</p>
 
-            <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-lg flex items-center">
-              <input
-                type="checkbox"
-                id="meFirst"
-                checked={isInitiatorFirst}
-                onChange={toggleInitiatorFirst}
-                className="h-4 w-4 text-slate-900 focus:ring-slate-900 border-slate-300 rounded cursor-pointer"
-              />
-              <label htmlFor="meFirst" className="ml-3 block text-sm font-medium text-slate-900 cursor-pointer">
-                I am the first signer
-              </label>
+            <div className="mb-4 bg-slate-50 border border-slate-200 rounded-lg overflow-hidden divide-y divide-slate-200">
+              <div className="p-2.5 flex items-center hover:bg-slate-100/50 transition-colors">
+                <input
+                  type="checkbox"
+                  id="meFirst"
+                  checked={isInitiatorFirst}
+                  onChange={toggleInitiatorFirst}
+                  className="h-4 w-4 text-slate-900 focus:ring-slate-900 border-slate-300 rounded cursor-pointer"
+                />
+                <label htmlFor="meFirst" className="ml-3 block text-sm font-medium text-slate-900 cursor-pointer flex-grow">
+                  I am the first signer
+                </label>
+              </div>
+
+              <div className="p-2.5 flex items-center hover:bg-slate-100/50 transition-colors">
+                <input
+                  type="checkbox"
+                  id="initiatorFinalCopy"
+                  checked={initiatorReceivesFinalCopy}
+                  onChange={(e) => setInitiatorReceivesFinalCopy(e.target.checked)}
+                  className="h-4 w-4 text-slate-900 focus:ring-slate-900 border-slate-300 rounded cursor-pointer"
+                />
+                <label htmlFor="initiatorFinalCopy" className="ml-3 block text-sm font-medium text-slate-900 cursor-pointer flex-grow">
+                  Send me a copy of the final completed document
+                </label>
+              </div>
             </div>
 
             <div className="space-y-4">
@@ -368,16 +588,52 @@ export default function Dashboard() {
                       {signer.role}
                     </span>
                   </div>
-                  <div className="w-full sm:w-1/3">
+                                    <div className="w-full sm:w-1/3 relative">
                     <input
                       type="text"
-                      placeholder="Signer Name"
+                      placeholder="Search name or email..."
                       value={signer.name}
                       disabled={signer.locked}
-                      onChange={(e) => handleSignerChange(index, 'name', e.target.value)}
+                      onChange={(e) => {
+                        handleSignerChange(index, 'name', e.target.value);
+                        
+                        // Trigger search if they typed at least 2 characters
+                        if (e.target.value.length >= 2) {
+                          setActiveSearchIndex(index);
+                          api.get(`/api/auth/users/search?q=${e.target.value}`)
+                             .then(res => setUserSuggestions(res.data.users))
+                             .catch(err => console.error(err));
+                        } else {
+                          setUserSuggestions([]);
+                        }
+                      }}
+                      // Delay hiding the dropdown so they have time to click a suggestion
+                      onBlur={() => setTimeout(() => setUserSuggestions([]), 200)}
                       className="block w-full text-sm border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900 disabled:bg-slate-50 disabled:text-slate-500 py-2 px-3 border"
                     />
+                    
+                    {/* The Auto-Complete Dropdown */}
+                    {activeSearchIndex === index && userSuggestions.length > 0 && (
+                      <ul className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                        {userSuggestions.map(u => (
+                          <li 
+                            key={u.id}
+                            // We use onMouseDown instead of onClick because onBlur fires before onClick
+                            onMouseDown={() => {
+                               handleSignerChange(index, 'name', u.name);
+                               handleSignerChange(index, 'email', u.email);
+                               setUserSuggestions([]);
+                            }}
+                            className="px-3 py-2 text-sm cursor-pointer hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
+                          >
+                            <div className="font-medium text-slate-900">{u.name}</div>
+                            <div className="text-xs text-slate-500">{u.email}</div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
+
                   <div className="w-full sm:w-1/3">
                     <input
                       type="email"
@@ -387,7 +643,24 @@ export default function Dashboard() {
                       onChange={(e) => handleSignerChange(index, 'email', e.target.value)}
                       className="block w-full text-sm border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900 disabled:bg-slate-50 disabled:text-slate-500 py-2 px-3 border"
                     />
+
+                    {!(isInitiatorFirst && index === 0) && (
+                      <div className="mt-1 flex items-center">
+                        <input
+                          type="checkbox"
+                          id={`final-copy-${index}`}
+                          checked={signer.receivesFinalCopy !== false} // defaults to true
+                          onChange={(e) => handleSignerChange(index, 'receivesFinalCopy', e.target.checked)}
+                          className="h-3.5 w-3.5 text-slate-900 focus:ring-slate-900 border-slate-300 rounded cursor-pointer"
+                        />
+                        <label htmlFor={`final-copy-${index}`} className="ml-2 text-[11px] font-medium text-slate-500 cursor-pointer">
+                          Receive final signed document
+                        </label>
+                      </div>
+                    )}
+
                   </div>
+
                   {index > 0 && (
                     <button onClick={() => removeSigner(index)} className="absolute -right-2 -top-2 sm:static sm:mt-2 text-slate-400 hover:text-red-500 transition-colors">
                       <Trash2 className="h-5 w-5" />
@@ -403,13 +676,18 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <div className="mt-8 pt-6 border-t border-slate-100 flex justify-between">
-              <button onClick={() => setCurrentStep(1)} className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">
+            <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
+              <button onClick={() => setCurrentStep(1)} className="flex items-center gap-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg px-3 py-2 mr-2 hover:bg-slate-50 hover:border-slate-400 transition-colors">
                 Back
               </button>
-              <button onClick={handleHierarchySubmit} className="flex items-center py-2.5 px-6 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors">
-                Continue to Canvas <ArrowRight className="ml-2 h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-3">
+                <button onClick={handleSaveAsDraft} disabled={isLoading} className="px-4 py-2.5 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 transition-colors disabled:opacity-50">
+                  {isLoading ? 'Saving...' : 'Save as draft'}
+                </button>
+                <button onClick={handleHierarchySubmit} className="flex items-center py-2.5 px-6 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors">
+                  Continue to Canvas <ArrowRight className="ml-2 h-4 w-4" />
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -417,14 +695,14 @@ export default function Dashboard() {
         {/* STEP 3 UI: THE CANVAS WORKSPACE */}
         {currentStep === 3 && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col md:flex-row h-[750px] animate-in fade-in slide-in-from-right-4 duration-500">
-            
+
             {/* Left Sidebar: Tool Panel */}
             <div className="w-full md:w-56 bg-slate-50 border-r border-slate-200 flex flex-col z-20 shadow-[2px_0_8px_-3px_rgba(0,0,0,0.1)]">
-              
+
               {/* Recipient Dropdown Redesign */}
               <div className="p-3 border-b border-slate-200 bg-white relative">
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Recipient</label>
-                <div 
+                <div
                   className="w-full text-xs border border-slate-200 rounded p-2 flex items-center justify-between cursor-pointer hover:border-slate-400 bg-white shadow-sm transition-colors"
                   onClick={() => setIsSignerDropdownOpen(!isSignerDropdownOpen)}
                 >
@@ -434,12 +712,12 @@ export default function Dashboard() {
                   </div>
                   <ChevronRight className={`h-3 w-3 text-slate-400 transition-transform ${isSignerDropdownOpen ? 'rotate-90' : ''}`} />
                 </div>
-                
+
                 {isSignerDropdownOpen && (
                   <div className="absolute top-[100%] left-3 right-3 mt-1 bg-white border border-slate-200 rounded-md shadow-lg z-50 py-1">
                     {signers.map(s => (
-                      <div 
-                        key={s.id} 
+                      <div
+                        key={s.id}
                         className="px-3 py-2 text-xs hover:bg-slate-50 cursor-pointer flex items-center"
                         onClick={() => { setActiveSignerId(s.id); setIsSignerDropdownOpen(false); }}
                       >
@@ -454,15 +732,15 @@ export default function Dashboard() {
               {/* Draggable Fields List */}
               <div className="p-3 flex-1 overflow-y-auto">
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Standard Fields</label>
-                <DraggableField icon={PenTool} label="Signature" type="Signature" />
-                <DraggableField icon={Type} label="Initial" type="Initial" />
-                <DraggableField icon={Calendar} label="Date Signed" type="Date" />
-                
+                <DraggableField icon={PenTool} label="Signature" type="Signature" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
+                <DraggableField icon={Type} label="Initial" type="Initial" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
+                <DraggableField icon={Calendar} label="Date Signed" type="Date" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
+
                 <div className="mt-4 mb-2 h-px bg-slate-200"></div>
-                
+
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Data Fields</label>
-                <DraggableField icon={UserSquare} label="Name" type="Name" />
-                <DraggableField icon={Type} label="Text Box" type="Text Box" />
+                <DraggableField icon={UserSquare} label="Name" type="Name" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
+                <DraggableField icon={Type} label="Text Box" type="Text Box" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
               </div>
 
               {/* Properties Panel (Moved to Left Sidebar) */}
@@ -474,17 +752,22 @@ export default function Dashboard() {
                       <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                  
+
                   {(() => {
                     const sField = fields.find(f => f.id === selectedFieldId);
                     if (!sField) return null;
                     const fSigner = signers.find(s => s.id === sField.signerId);
-                    
+
                     return (
                       <div className="p-4 space-y-4">
                         <div>
-                          <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Assigned To</label>
-                          <select 
+                          <label className="flex items-center text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                            {fSigner && (
+                              <span className={`w-2 h-2 rounded-full mr-1.5 ${fSigner.color.split(' ')[0].replace('-100', '-500')}`}></span>
+                            )}
+                            Assigned To
+                          </label>
+                          <select
                             value={sField.signerId}
                             onChange={(e) => updateFieldProperty(sField.id, 'signerId', Number(e.target.value))}
                             className="block w-full text-xs font-medium text-slate-900 bg-white p-2 rounded border border-slate-200 focus:ring-slate-900 focus:border-slate-900 shadow-sm cursor-pointer"
@@ -498,8 +781,8 @@ export default function Dashboard() {
                         </div>
 
                         <div className="flex items-center py-1">
-                          <input 
-                            type="checkbox" 
+                          <input
+                            type="checkbox"
                             id="requiredField"
                             checked={sField.required}
                             onChange={(e) => updateFieldProperty(sField.id, 'required', e.target.checked)}
@@ -509,7 +792,7 @@ export default function Dashboard() {
                         </div>
 
                         <div className="pt-4 border-t border-slate-100">
-                          <button 
+                          <button
                             onClick={() => { deleteField(sField.id); setSelectedFieldId(null); }}
                             className="w-full flex items-center justify-center py-2 px-3 border border-red-200 text-red-600 rounded-md text-xs font-medium hover:bg-red-50 hover:border-red-300 transition-colors shadow-sm"
                           >
@@ -530,6 +813,9 @@ export default function Dashboard() {
               {/* PDF Toolbar */}
               <div className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 shadow-sm z-10">
                 <div className="flex items-center space-x-2">
+                  <button onClick={() => setCurrentStep(2)} className="flex items-center gap-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg px-3 py-2 mr-2 hover:bg-slate-50 hover:border-slate-400 transition-colors">
+                    Back
+                  </button>
                   <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage <= 1} className="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors disabled:opacity-50"><ChevronLeft className="h-5 w-5" /></button>
                   <span className="text-sm font-medium text-slate-600">Page {currentPage} of {totalPages}</span>
                   <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage >= totalPages} className="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors disabled:opacity-50"><ChevronRight className="h-5 w-5" /></button>
@@ -540,29 +826,34 @@ export default function Dashboard() {
                   <span className="text-xs font-medium text-slate-500 w-12 text-center">100%</span>
                 </div>
 
-                <button
-                  onClick={handleDispatchDocument}
-                  disabled={isLoading}
-                  className="flex items-center py-2 px-4 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-sm"
-                >
-                  {isLoading ? 'Processing...' : 'Send Document'} <Send className="ml-2 h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-3">
+                  <button onClick={handleSaveAsDraft} disabled={isLoading} className="px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 transition-colors disabled:opacity-50">
+                    {isLoading ? 'Saving...' : 'Save as draft'}
+                  </button>
+                  <button
+                    onClick={handleDispatchDocument}
+                    disabled={isLoading}
+                    className="flex items-center py-2 px-4 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-sm"
+                  >
+                    {isLoading ? 'Processing...' : 'Send Document'} <Send className="ml-2 h-4 w-4" />
+                  </button>
+                </div>
               </div>
 
               {/* The Actual Canvas Area */}
-              <div 
+              <div
                 className="flex-1 overflow-auto p-8 flex justify-center relative bg-slate-200/50"
                 onClick={() => setSelectedFieldId(null)}
               >
-                <div 
+                <div
                   id="pdf-dropzone"
-                  className={`relative shadow-lg border border-slate-200 bg-white w-[750px] mx-auto ${file ? 'h-fit' : 'min-h-[500px]'}`}
+                  className={`relative shadow-lg border border-slate-200 bg-white w-[750px] mx-auto ${canvasFileSource ? 'h-fit' : 'min-h-[500px]'}`}
                   onDragOver={handleDragOver}
                   onDrop={handleDrop}
                 >
-                  {file ? (
+                  {canvasFileSource ? (
                     <Document
-                      file={file}
+                      file={canvasFileSource}
                       onLoadSuccess={onDocumentLoadSuccess}
                       loading={<div className="p-20 text-slate-400 flex justify-center w-[750px]">Loading document...</div>}
                       error={<div className="p-20 text-red-500 flex justify-center w-[750px]">Failed to load PDF.</div>}
@@ -618,7 +909,7 @@ export default function Dashboard() {
                         onClick={(e) => { e.stopPropagation(); setSelectedFieldId(field.id); }}
                       >
                         <span className={`text-[10px] font-bold uppercase tracking-wider flex items-center ${textColor}`}>
-                           {field.type} {field.required ? '*' : ''}
+                          {field.type} {field.required ? '*' : ''}
                         </span>
                       </Rnd>
                     );

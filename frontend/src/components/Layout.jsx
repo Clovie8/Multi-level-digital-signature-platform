@@ -1,80 +1,77 @@
 import { useState, useEffect, useRef } from 'react';
-import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
-import { PenTool, Menu, X, Home, FileSignature, Settings, LogOut, User, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Outlet, useNavigate, useLocation, useOutletContext, Link } from 'react-router-dom';
+import { PenTool, Menu, X, Home, FileSignature, Settings, LogOut, User, ChevronDown, ChevronLeft, ChevronRight, UploadCloud, ShieldCheck, ScrollText } from 'lucide-react';
 import toast from 'react-hot-toast';
-import axios from 'axios';
+import api from '../lib/api';
+
+const generateInitials = (name) => {
+  if (!name) return 'U';
+  const nameParts = name.trim().split(' ');
+  if (nameParts.length >= 2) {
+    return (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase();
+  }
+  return name.substring(0, 2).toUpperCase();
+};
 
 export default function Layout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true); // New state for desktop toggle
-  
+
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [currentUser, setCurrentUser] = useState({
-    name: 'Loading...',
-    email: '',
-    initials: '',
-    role: 'User'
-  });
+  // ProtectedRoute already verified the session and fetched the user
+  const { user } = useOutletContext();
+
+  const currentUser = {
+    name: user?.name || 'User',
+    email: user?.email || '',
+    initials: generateInitials(user?.name),
+    role: user?.role === 'admin' ? 'Admin' : 'User'
+  };
 
   const handleSignOut = async () => {
     try {
+      // Auto-save draft before destroying the session
+      const cachedDraft = localStorage.getItem('upload_draft_state');
+      if (cachedDraft) {
+        try {
+          const parsed = JSON.parse(cachedDraft);
+          if (parsed.documentId) {
+            // Send the draft configuration to the server silently
+            await api.patch(`/api/documents/${parsed.documentId}/draft-config`, {
+              signers: parsed.signers,
+              fields: parsed.fields,
+              isInitiatorFirst: parsed.isInitiatorFirst,
+              initiatorReceivesFinalCopy: parsed.initiatorReceivesFinalCopy,
+              currentStep: parsed.currentStep
+            });
+          }
+        } catch (e) {
+          console.error('Failed to auto-save draft on logout', e);
+        }
+      }
+
+
       // Tell backend to destroy the HttpOnly cookie
-      await axios.post('http://localhost:5000/api/auth/logout', {}, { withCredentials: true });
-      
+      await api.post('/api/auth/logout', {});
+
       // Clear frontend auth flag
       localStorage.removeItem('isAuthenticated');
-      
+      localStorage.removeItem('upload_draft_state');
+
       toast.success('Securely signed out.');
       navigate('/login', { replace: true });
     } catch (err) {
       console.error(err);
       // Even if network fails, we should kick them to login
       localStorage.removeItem('isAuthenticated');
+      localStorage.removeItem('upload_draft_state');
       navigate('/login', { replace: true });
     }
   };
-
-  // Fetch Real Data from Database on Load
-  useEffect(() => {
-    const fetchUserData = async () => {
-      try {
-        const res = await axios.get('http://localhost:5000/api/auth/me', {
-          withCredentials: true // Extremely important to pass the secure HttpOnly cookie
-        });
-        
-        const user = res.data;
-
-        const generateInitials = (name) => {
-          if (!name) return 'U';
-          const nameParts = name.trim().split(' ');
-          if (nameParts.length >= 2) {
-            return (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase();
-          }
-          return name.substring(0, 2).toUpperCase();
-        };
-
-        setCurrentUser({
-          name: user.name,
-          email: user.email,
-          initials: generateInitials(user.name),
-          role: 'User' // Placeholder until roles are added to schema
-        });
-      } catch (error) {
-        console.error('Failed to fetch user:', error);
-        // If the cookie is expired/invalid, sign them out properly
-        if (error.response?.status === 401 || error.response?.status === 403) {
-          handleSignOut(); 
-        }
-      }
-    };
-
-    fetchUserData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Close the profile dropdown if the user clicks anywhere else on the screen
   useEffect(() => {
@@ -87,12 +84,16 @@ export default function Layout() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const navigation = [
-    { name: 'Dashboard', href: '/', icon: Home },
+   const navigation = [
+    ...(user?.role === 'admin' ? [
+      { name: 'Admin Dashboard', href: '/admin', icon: ShieldCheck },
+    ] : []),
+    ...(user?.role !== 'admin' ? [{ name: 'Dashboard', href: '/', icon: Home }] : []),
     { name: 'Documents', href: '/documents', icon: FileSignature },
-    { name: 'Settings', href: '/settings', icon: Settings },
+    { name: 'Upload', href: '/upload', icon: UploadCloud },
+    { name: 'Settings', href: '/Settings', icon: Settings },
+    ...(user?.role === 'admin' ? [{ name: 'Audit Logs', href: '/admin/audit-logs', icon: ScrollText }] : []),
   ];
-
   // Dynamically set the Header Title based on the current URL route
   const getPageTitle = () => {
     const currentRoute = navigation.find(item => item.href === location.pathname);
@@ -250,7 +251,7 @@ export default function Layout() {
 
         {/* Dynamic Page Content (This is where Dashboard.jsx renders) */}
         <main className="flex-1 overflow-y-auto bg-[#FAFAFA]">
-          <Outlet />
+          <Outlet context={{ user }} />
         </main>
 
       </div>
