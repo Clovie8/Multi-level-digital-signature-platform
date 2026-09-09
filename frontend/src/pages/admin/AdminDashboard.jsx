@@ -85,11 +85,53 @@ function ConfirmModal({ isOpen, title, message, confirmText, isDanger, onConfirm
   );
 }
 
+function DeactivateModal({ isOpen, userName, onConfirm, onCancel, isProcessing }) {
+  const [reason, setReason] = useState('');
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4" onClick={onCancel}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="p-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-2">Deactivate User</h3>
+          <p className="text-sm text-slate-500 leading-relaxed mb-4">
+            {userName} won't be able to sign in until reactivated. They'll be notified by email.
+          </p>
+          <label className="block text-xs font-semibold text-slate-500 mb-1.5">Reason (optional)</label>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={3}
+            placeholder="e.g. Left the organization"
+            className="w-full text-sm border border-slate-200 rounded-md p-2.5 focus:ring-red-500 focus:border-red-500 resize-none"
+          />
+        </div>
+        <div className="bg-slate-50 border-t border-slate-100 p-4 flex justify-end gap-3">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-md transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(reason)}
+            disabled={isProcessing}
+            className="px-4 py-2 text-sm font-medium rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+          >
+            {isProcessing ? 'Deactivating…' : 'Deactivate'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function UserActionsMenu({ user: targetUser, currentUserId, onActionComplete }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [openUpward, setOpenUpward] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [confirmDialog, setConfirmDialog] = useState(null);
+  const [showDeactivateModal, setShowDeactivateModal] = useState(false);
   const menuRef = useRef(null);
   const buttonRef = useRef(null);
 
@@ -128,12 +170,15 @@ function UserActionsMenu({ user: targetUser, currentUserId, onActionComplete }) 
     }
   };
 
-  const runToggleActive = async (deactivate) => {
-    setConfirmDialog(null);
+  const runToggleActive = async (deactivate, reason) => {
+    setShowDeactivateModal(false);
     setIsProcessing(true);
     try {
-      const endpoint = deactivate ? 'deactivate' : 'reactivate';
-      await api.patch(`/api/admin/users/${targetUser.id}/${endpoint}`);
+      if (deactivate) {
+        await api.patch(`/api/admin/users/${targetUser.id}/deactivate`, { reason });
+      } else {
+        await api.patch(`/api/admin/users/${targetUser.id}/reactivate`);
+      }
       toast.success(`${targetUser.name} has been ${deactivate ? 'deactivated' : 'reactivated'}.`);
       onActionComplete();
     } catch (err) {
@@ -152,13 +197,7 @@ function UserActionsMenu({ user: targetUser, currentUserId, onActionComplete }) 
       return;
     }
 
-    setConfirmDialog({
-      title: 'Deactivate User',
-      message: `Deactivate ${targetUser.name}? They won't be able to sign in until reactivated.`,
-      confirmText: 'Deactivate',
-      isDanger: true,
-      action: () => runToggleActive(true),
-    });
+    setShowDeactivateModal(true);
   };
 
   const menuItemCls = "w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
@@ -210,14 +249,12 @@ function UserActionsMenu({ user: targetUser, currentUserId, onActionComplete }) 
         )}
       </div>
 
-      <ConfirmModal
-        isOpen={!!confirmDialog}
-        title={confirmDialog?.title}
-        message={confirmDialog?.message}
-        confirmText={confirmDialog?.confirmText}
-        isDanger={confirmDialog?.isDanger}
-        onConfirm={confirmDialog?.action}
-        onCancel={() => setConfirmDialog(null)}
+      <DeactivateModal
+        isOpen={showDeactivateModal}
+        userName={targetUser.name}
+        isProcessing={isProcessing}
+        onConfirm={(reason) => runToggleActive(true, reason)}
+        onCancel={() => setShowDeactivateModal(false)}
       />
     </div>
   );
@@ -523,7 +560,7 @@ export default function AdminDashboard() {
                   placeholder="Search users..."
                   isClearable
                   classNamePrefix="react-select"
-                  maxMenuHeight={3*40}
+                  maxMenuHeight={3 * 40}
                   styles={{
                     control: (base) => ({ ...base, minHeight: '34px', fontSize: '13px', borderColor: '#e2e8f0' }),
                     menu: (base) => ({ ...base, fontSize: '13px' }),
