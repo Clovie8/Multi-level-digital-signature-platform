@@ -471,7 +471,7 @@ export default function AdminDashboard() {
     }
   };
 
-  useEffect(() => {
+  useEffect(() => {Z
     fetchUsers();
   }, []);
 
