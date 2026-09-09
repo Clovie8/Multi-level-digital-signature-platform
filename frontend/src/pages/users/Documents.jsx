@@ -399,7 +399,7 @@ function DocumentTableRow({ document, currentUser, isChecked, onCheck, onOpen, o
         </div>
       </td>
       <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">
-        {new Date(document.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+        {new Date(document.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
       </td>
       <td className="px-3 py-2">
         <ProgressDots document={document} />
@@ -417,24 +417,108 @@ function DocumentTableRow({ document, currentUser, isChecked, onCheck, onOpen, o
   );
 }
 
-function StepsTimeline({ steps }) {
+function StepsTimeline({ steps, documentCreatedAt, documentUpdatedAt }) {
   return (
-    <div className="flex rounded-lg border border-slate-200 overflow-hidden">
-      {steps.map((step) => {
+    <div className="space-y-3 mt-4">
+      {steps.map((step, index) => {
         const isSigned = step.status === 'completed';
         const isDeclined = step.status === 'declined';
+        
+        // Calculate when it reached this user (either document start or previous step signed time)
+        const reachedAt = step.reachedAt || (index === 0 ? documentCreatedAt : steps[index - 1]?.signedAt);
+        
+        // Calculate average turnaround time
+        let turnaroundTime = null;
+        if (reachedAt && step.signedAt) {
+          const diffMs = new Date(step.signedAt).getTime() - new Date(reachedAt).getTime();
+          const totalSeconds = Math.max(0, Math.floor(diffMs / 1000));
+          const hrs = Math.floor(totalSeconds / 3600);
+          const mins = Math.floor((totalSeconds % 3600) / 60);
+          const secs = totalSeconds % 60;
+          const pad = (num) => String(num).padStart(2, '0');
+          turnaroundTime = `${pad(hrs)}:${pad(mins)}:${pad(secs)}`;
+        }
+
+        const formatDate = (dateString) => {
+          if (!dateString) return '—';
+          return new Date(dateString).toLocaleDateString(undefined, { 
+            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+          });
+        };
+
         return (
           <div
             key={step.id}
-            className={`flex-1 px-3 py-2.5 border-r border-slate-200 last:border-r-0 ${isSigned ? 'bg-emerald-50' : isDeclined ? 'bg-red-50' : 'bg-white'
-              }`}
+            className={`p-3 rounded border transition-colors flex flex-col gap-3 ${
+              isSigned ? 'bg-emerald-50/50 border-emerald-200' : 
+              isDeclined ? 'bg-red-50/50 border-red-200' : 
+              'bg-slate-50 border-slate-200 shadow-sm'
+            }`}
           >
-            <p className="text-[10px] font-mono text-slate-400">STEP {step.stepOrder}</p>
-            <p className="text-xs font-semibold text-slate-800 truncate mt-0.5">{step.signerName}</p>
-            <p className={`text-[11px] font-medium mt-0.5 ${isSigned ? 'text-emerald-600' : isDeclined ? 'text-red-600' : 'text-slate-400'
-              }`}>
-              {isSigned ? 'Signed' : isDeclined ? 'Declined' : 'Waiting'}
-            </p>
+            {/* Top Section: Left (Info) and Right (Dates) */}
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+              {/* Left Column: Status Badge, Step, Name, Email */}
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-1">
+                  <p className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">Signer {step.stepOrder}</p>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-xl tracking-wide ${
+                    isSigned ? 'bg-emerald-100 text-emerald-700' : 
+                    isDeclined ? 'bg-red-100 text-red-700' : 
+                    'bg-amber-100 text-amber-700'
+                  }`}>
+                    {isSigned ? 'Signed' : isDeclined ? 'Declined' : 'Pending'}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-900">{step.signerName}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{step.signerEmail}</p>
+                </div>
+              </div>
+              
+              {/* Right Column: Reached, Signed, Turnaround */}
+              <div className="flex flex-col gap-1 sm:text-right text-[11px] text-slate-600">
+                <div>
+                  <span className="font-semibold text-slate-400 uppercase tracking-wide text-[9px] mr-1.5">Reached:</span> 
+                  <span className="font-medium text-slate-800">{formatDate(reachedAt)}</span>
+                </div>
+                
+                {isSigned && (
+                  <div>
+                    <span className="font-semibold text-slate-400 uppercase tracking-wide text-[9px] mr-1.5">Signed:</span> 
+                    <span className="font-medium text-slate-800">{formatDate(step.signedAt)}</span>
+                  </div>
+                )}
+
+                {isDeclined && (
+                  <div>
+                    <span className="font-semibold text-slate-400 uppercase tracking-wide text-[9px] mr-1.5">Declined:</span> 
+                    <span className="font-medium text-slate-800">{formatDate(step.updatedAt || step.signedAt || documentUpdatedAt)}</span>
+                  </div>
+                )}
+                
+                {isSigned && turnaroundTime && (
+                  <div>
+                    <span className="font-semibold text-slate-400 uppercase tracking-wide text-[9px] mr-1.5">Turnaround:</span> 
+                    <span className="font-medium text-slate-800">{turnaroundTime}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Bottom Section: Full Width Banners (Reason, Reminded) */}
+            {isDeclined && step.declineReason && (
+              <div className="p-2 bg-red-50 rounded-lg border border-red-100 w-full mt-1">
+                <span className="font-bold text-red-600 uppercase tracking-wide text-[9px] mr-1.5">Decline Reason:</span> 
+                <span className="font-medium text-red-800 text-xs italic">"{step.declineReason}"</span>
+              </div>
+            )}
+            
+            {step.lastReminderSentAt && !isSigned && !isDeclined && (
+              <div className="p-2.5 bg-amber-50 rounded-lg border border-amber-100 w-full mt-1">
+                <span className="font-bold text-amber-600 uppercase tracking-wide text-[9px] mr-1.5">Last Reminded:</span> 
+                <span className="font-medium text-amber-800 text-xs">{formatDate(step.lastReminderSentAt)}</span>
+              </div>
+            )}
           </div>
         );
       })}
@@ -538,7 +622,7 @@ function ReviewPanel({ document, onRefresh }) {
 
   return (
     <div className="mt-5">
-      <StepsTimeline steps={document.steps} />
+      <StepsTimeline steps={document.steps} documentCreatedAt={document.createdAt} />
 
       <div className="mt-5 border border-teal-200 bg-teal-50 rounded-xl p-4">
         <div className="flex items-center gap-2.5 mb-2">
@@ -656,7 +740,7 @@ function DeclineResolutionPanel({ document, onRefresh }) {
         </div>
       )}
 
-      <StepsTimeline steps={document.steps} />
+      <StepsTimeline steps={document.steps} documentCreatedAt={document.createdAt} />
 
       <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mt-6 mb-3">
         {resumeLimitReached ? 'Choose one' : 'Choose how to proceed'}
@@ -987,11 +1071,11 @@ export default function Documents() {
               <table className="w-full text-left table-fixed">
                 <colgroup>
                   <col style={{ width: '3%' }} />
-                  <col style={{ width: '32%' }} />
+                  <col style={{ width: '28%' }} />
                   <col style={{ width: '13%' }} />
-                  <col style={{ width: '8%' }} />
+                  <col style={{ width: '12%' }} />
                   <col style={{ width: '9%' }} />
-                  <col style={{ width: '17%' }} />
+                  <col style={{ width: '15%' }} />
                   <col style={{ width: '13%' }} />
                   <col style={{ width: '5%' }} />
                 </colgroup>
@@ -1093,6 +1177,9 @@ export default function Documents() {
                     <h2 className="text-base font-semibold text-slate-900">
                       {detail.fileName} <span className="text-slate-400 font-normal">v{detail.version}</span>
                     </h2>
+                    <p className="text-xs text-slate-500 mt-1 font-medium">
+                      Initiated on {new Date(detail.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </p>
                     <p className="text-xs text-slate-400 mt-0.5">
                       {detail.steps.length} signer{detail.steps.length === 1 ? '' : 's'} · sequential order
                     </p>
@@ -1111,7 +1198,7 @@ export default function Documents() {
                   <ReviewPanel document={detail} onRefresh={handleRefresh} />
                 ) : (
                   <div className="mt-5">
-                    <StepsTimeline steps={detail.steps} />
+                    <StepsTimeline steps={detail.steps} documentCreatedAt={detail.createdAt} documentUpdatedAt={detail.updatedAt} />
                     {detail.status === 'completed' && (
                       <div className="flex items-center gap-2 mt-4 text-sm text-emerald-600">
                         <CheckCircle2 className="h-4 w-4" /> All signatures collected and sealed.
