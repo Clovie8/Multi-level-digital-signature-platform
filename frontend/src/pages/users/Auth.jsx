@@ -443,7 +443,7 @@ export default function Auth() {
                 <div className="space-y-3">
                   <button
                     type="button"
-                    onClick={() => window.location.href = 'http://localhost:5000/api/auth/microsoft'}
+                    onClick={() => window.location.href = `${import.meta.env.VITE_API_URL}/api/auth/microsoft`}
                     className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 border border-slate-200 rounded-md shadow-sm text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 transition-colors"
                   >
                     <svg className="h-4 w-4" viewBox="0 0 23 23" fill="none">
@@ -456,7 +456,7 @@ export default function Auth() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => window.location.href = 'http://localhost:5000/api/auth/google'}
+                    onClick={() => window.location.href = `${import.meta.env.VITE_API_URL}/api/auth/google`}
                     className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 border border-slate-200 rounded-md shadow-sm text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 transition-colors"
                   >
                     <svg className="h-4 w-4" viewBox="0 0 48 48">
