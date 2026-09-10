@@ -20,29 +20,45 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 
 const PinInputBox = ({ pin, setPin }) => {
   const inputs = useRef([]);
+  const [pinArray, setPinArray] = useState(Array(4).fill(''));
+
+  useEffect(() => {
+    if (!pin) setPinArray(Array(4).fill(''));
+  }, [pin]);
+
+  const updatePin = (newArray) => {
+    setPinArray(newArray);
+    setPin(newArray.join(''));
+  };
 
   const handleChange = (e, index) => {
-    const val = e.target.value.replace(/\D/g, '');
-    if (!val) return;
+    const val = e.target.value;
+    if (!val) {
+      const newPin = [...pinArray];
+      newPin[index] = '';
+      updatePin(newPin);
+      return;
+    }
 
-    const newPin = pin.split('');
-    newPin[index] = val.slice(-1); 
-    setPin(newPin.join(''));
+    const char = val.replace(/\D/g, '').slice(-1);
+    if (!char) return;
 
-    if (index < 3 && val) {
+    const newPin = [...pinArray];
+    newPin[index] = char;
+    updatePin(newPin);
+
+    if (index < 3) {
       inputs.current[index + 1].focus();
     }
   };
 
   const handleKeyDown = (e, index) => {
-    if (e.key === 'Backspace') {
-      const newPin = pin.split('');
-      newPin[index] = '';
-      setPin(newPin.join(''));
-      
-      if (index > 0) {
-        inputs.current[index - 1].focus();
-      }
+    if (e.key === 'Backspace' && !pinArray[index] && index > 0) {
+      e.preventDefault();
+      const newPin = [...pinArray];
+      newPin[index - 1] = '';
+      inputs.current[index - 1].focus();
+      updatePin(newPin);
     }
   };
 

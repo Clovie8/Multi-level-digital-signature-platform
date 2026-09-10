@@ -71,7 +71,12 @@ const PasswordStrength = ({ password }) => {
 const OTPInput = ({ value, onChange, autoFocus }) => {
   const inputs = useRef([]);
   const length = 6;
-  const otpArray = value.padEnd(length, '').split('').slice(0, length);
+  const [otpArray, setOtpArray] = useState(Array(length).fill(''));
+
+  // Sync with parent if cleared
+  useEffect(() => {
+    if (!value) setOtpArray(Array(length).fill(''));
+  }, [value]);
 
   useEffect(() => {
     if (autoFocus && inputs.current[0]) {
@@ -79,15 +84,26 @@ const OTPInput = ({ value, onChange, autoFocus }) => {
     }
   }, [autoFocus]);
 
-  const handleChange = (e, index) => {
-    const val = e.target.value.replace(/[^0-9]/g, '');
-    if (!val) return;
+  const updateOtp = (newArray) => {
+    setOtpArray(newArray);
+    onChange({ target: { name: 'otp', value: newArray.join('') } });
+  };
 
-    const char = val[val.length - 1];
+  const handleChange = (e, index) => {
+    const val = e.target.value;
+    if (!val) {
+      const newOtpArray = [...otpArray];
+      newOtpArray[index] = '';
+      updateOtp(newOtpArray);
+      return;
+    }
+
+    const char = val.replace(/[^0-9]/g, '').slice(-1);
+    if (!char) return;
+
     const newOtpArray = [...otpArray];
     newOtpArray[index] = char;
-
-    onChange({ target: { name: 'otp', value: newOtpArray.join('') } });
+    updateOtp(newOtpArray);
 
     if (index < length - 1) {
       inputs.current[index + 1].focus();
@@ -95,18 +111,12 @@ const OTPInput = ({ value, onChange, autoFocus }) => {
   };
 
   const handleKeyDown = (e, index) => {
-    if (e.key === 'Backspace') {
+    if (e.key === 'Backspace' && !otpArray[index] && index > 0) {
       e.preventDefault();
       const newOtpArray = [...otpArray];
-
-      if (!newOtpArray[index] && index > 0) {
-        newOtpArray[index - 1] = '';
-        inputs.current[index - 1].focus();
-      } else {
-        newOtpArray[index] = '';
-      }
-
-      onChange({ target: { name: 'otp', value: newOtpArray.join('') } });
+      newOtpArray[index - 1] = '';
+      inputs.current[index - 1].focus();
+      updateOtp(newOtpArray);
     }
   };
 
@@ -142,7 +152,14 @@ const OTPInput = ({ value, onChange, autoFocus }) => {
 
 export default function Auth() {
   const navigate = useNavigate();
-  const [view, setView] = useState('login');
+  const [view, setView] = useState(() => {
+    return sessionStorage.getItem('authView') || 'login';
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem('authView', view);
+  }, [view]);
+
   const [isLoading, setIsLoading] = useState(false);
   const [isInviteFlow, setIsInviteFlow] = useState(false);
 
@@ -481,7 +498,7 @@ export default function Auth() {
                 <form onSubmit={handleLogin} className="space-y-5">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Email Address</label>
-                    <InputField inputRef={loginEmailRef} icon={Mail} type="email" name="email" placeholder="admin@company.com" value={formData.email} onChange={handleChange} />
+                    <InputField inputRef={loginEmailRef} icon={Mail} type="email" name="email" placeholder="name@example.com" value={formData.email} onChange={handleChange} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Password</label>
@@ -505,7 +522,7 @@ export default function Auth() {
             {view === 'register' && (
               <form onSubmit={handleRegister} className="space-y-5">
                 <InputField inputRef={registerNameRef} icon={User} type="text" name="name" placeholder="Full Name" value={formData.name} onChange={handleChange} />
-                <InputField icon={Mail} type="email" name="email" placeholder="name@company.com" value={formData.email} onChange={handleChange} />
+                <InputField icon={Mail} type="email" name="email" placeholder="name@example.com" value={formData.email} onChange={handleChange} />
                 <div>
                   <InputField icon={Lock} type="password" name="password" placeholder="Create a strong password" value={formData.password} onChange={handleChange} isPassword />
                   <PasswordStrength password={formData.password} />
