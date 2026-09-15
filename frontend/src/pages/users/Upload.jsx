@@ -283,6 +283,13 @@ export default function Upload() {
     if (uniqueEmails.size !== emails.length) {
       return toast.error('Duplicate emails found. Each signer must have a unique email address.');
     }
+
+    // Email validation
+    const invalidEmail = emails.find(email => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+    if (invalidEmail) {
+      return toast.error(`Invalid email address: ${invalidEmail}`);
+    }
+
     // Check for duplicate names (case-insensitive)
     const names = signers.map(s => s.name.trim().toLowerCase());
     const uniqueNames = new Set(names);

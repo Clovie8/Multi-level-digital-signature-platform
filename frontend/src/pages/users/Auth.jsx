@@ -227,6 +227,12 @@ export default function Auth() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+
+    // Email validation
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      return toast.error("Please enter a valid email address format.");
+    }
+
     setIsLoading(true);
     try {
       const res = await api.post('/api/auth/login', {
@@ -255,6 +261,12 @@ export default function Auth() {
 
   const handleRegister = async (e) => {
     e.preventDefault();
+
+    // Email Validation 
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      return toast.error("Please enter a valid email address format.");
+    }
+
     const hasLength = formData.password.length >= 8;
     const hasNumber = /\d/.test(formData.password);
     const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(formData.password);
@@ -323,6 +335,12 @@ export default function Auth() {
 
   const handleForgot = async (e) => {
     e.preventDefault();
+
+    // Email validation
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      return toast.error("Please enter a valid email address format.");
+    }
+
     setIsLoading(true);
     try {
       await api.post('/api/auth/forgot-password', {
