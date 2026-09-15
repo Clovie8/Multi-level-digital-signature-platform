@@ -614,7 +614,7 @@ export default function Auth() {
                 <InputField inputRef={forgotEmailRef} icon={Mail} type="email" name="email" placeholder="Enter your registered email" value={formData.email} onChange={handleChange} />
                 <button disabled={isLoading} type="submit" className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 transition-all disabled:opacity-50">
                   {isLoading && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
-                  {isLoading ? 'Sending...' : 'Send Reset Link'}
+                  {isLoading ? 'Sending...' : 'Send Reset Token'}
                   {!isLoading && <ArrowRight className="ml-2 h-4 w-4" />}
                 </button>
 
