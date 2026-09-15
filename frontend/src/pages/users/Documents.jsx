@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   FileSignature, RotateCcw, Layers, Ban, Clock, CheckCircle2,
   AlertTriangle, UploadCloud, X, Plus, Search,
-  Eye, Bell, Download, Pencil, History, MoreVertical, Info
+  Eye, Bell, Download, Pencil, History, MoreVertical, Info, Loader2
 } from 'lucide-react';
 
 const STATUS_META = {
@@ -185,7 +185,7 @@ function VersionHistoryModal({ documentId, onClose, onOpenVersion }) {
   );
 }
 
-function RowActions({ document, onView, onVoided }) {
+function RowActions({ document, currentUser, onView, onVoided }) {
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [openUpward, setOpenUpward] = useState(false);
@@ -230,9 +230,21 @@ function RowActions({ document, onView, onVoided }) {
     setIsDownloading(true);
     try {
       const res = await api.get(`/api/documents/${document.id}/download`);
-      window.open(res.data.url, '_blank', 'noopener,noreferrer');
+      const response = await fetch(res.data.url);
+      if (!response.ok) throw new Error('Failed to fetch file for download');
+      
+      const blob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      
+      const link = window.document.createElement('a');
+      link.href = objectUrl;
+      link.download = document.fileName || 'document.pdf';
+      window.document.body.appendChild(link);
+      link.click();
+      window.document.body.removeChild(link);
+      window.URL.revokeObjectURL(objectUrl);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not download this document.');
+      toast.error(err.message || 'Could not download this document.');
     } finally {
       setIsDownloading(false);
     }
@@ -273,11 +285,14 @@ function RowActions({ document, onView, onVoided }) {
   const VOIDABLE_STATUSES = ['draft', 'pending', 'in_progress', 'pending_review', 'declined'];
 
   const items = [];
-  if (document.status === 'draft') {
-    items.push({ key: 'edit', label: 'Edit', icon: Pencil, onClick: () => navigate(`/upload?edit=${document.id}`) });
-  } else {
-    items.push({ key: 'view', label: 'View', icon: Eye, onClick: () => onView(document.id) });
-  }
+    if (document.status === 'draft') {
+      items.push({ key: 'edit', label: 'Edit', icon: Pencil, onClick: () => navigate(`/upload?edit=${document.id}`) });
+    } else {
+      items.push({ key: 'details', label: 'Details', icon: Info, onClick: () => onView(document.id) });
+      const isInitiatorReviewing = document.status === 'pending_review' && document.initiatorId === currentUser?.id;
+      const reviewUrl = isInitiatorReviewing ? `/review/${document.id}` : `/review/${document.id}?mode=preview`;
+      items.push({ key: 'review', label: 'Review', icon: Eye, onClick: () => navigate(reviewUrl) });
+    }
   if (document.pendingSignerToken) {
     items.push({ 
       key: 'sign', 
@@ -290,7 +305,14 @@ function RowActions({ document, onView, onVoided }) {
     items.push({ key: 'remind', label: isSendingReminder ? 'Sending…' : 'Send reminder', icon: Bell, onClick: handleSendReminder, disabled: isSendingReminder });
   }
   if (document.status === 'completed') {
-    items.push({ key: 'download', label: isDownloading ? 'Downloading…' : 'Download', icon: Download, onClick: handleDownload, disabled: isDownloading });
+    items.push({ 
+      key: 'download', 
+      label: isDownloading ? 'Downloading...' : 'Download', 
+      icon: isDownloading ? Loader2 : Download, 
+      onClick: handleDownload, 
+      disabled: isDownloading,
+      spinIcon: isDownloading // we can add a custom spin class if we modify the render, but wait! Let's just use icon mapping
+    });
   }
   items.push({ key: 'versions', label: 'Version history', icon: History, onClick: () => setIsVersionModalOpen(true) });
   if (VOIDABLE_STATUSES.includes(document.status)) {
@@ -411,7 +433,7 @@ function DocumentTableRow({ document, currentUser, isChecked, onCheck, onOpen, o
         <StatusPill status={document.status} />
       </td>
       <td className="px-3 py-2">
-        <RowActions document={document} onView={onOpen} onVoided={onVoided} />
+        <RowActions document={document} currentUser={currentUser} onView={onOpen} onVoided={onVoided} />
       </td>
     </tr>
   );
