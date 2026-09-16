@@ -171,7 +171,8 @@ export default function Sign() {
 
   // Decline State
   const [isDeclineModalOpen, setIsDeclineModalOpen] = useState(false);
-  const [declineReason, setDeclineReason] = useState('');
+  const [declineReasonRadio, setDeclineReasonRadio] = useState('');
+  const [declineReasonText, setDeclineReasonText] = useState('');
 
   // Fix Signature Canvas Scaling
   useEffect(() => {
@@ -505,8 +506,9 @@ export default function Sign() {
   };
 
   const handleConfirmDecline = async () => {
-    if (!declineReason.trim()) {
-      toast.error('Please explain why you are declining.');
+    const finalReason = declineReasonRadio === 'Other' ? declineReasonText : declineReasonRadio;
+    if (!finalReason.trim()) {
+      toast.error('Please provide a reason for declining.');
       return;
     }
 
@@ -514,7 +516,7 @@ export default function Sign() {
     setIsLoading(true);
     try {
       await api.post(`/api/documents/sign/${token}/decline`, {
-        reason: declineReason
+        reason: finalReason
       });
       toast.success('Document declined. The initiator has been notified.');
       navigate('/login');
@@ -1167,21 +1169,42 @@ export default function Sign() {
 
             <div className="p-6">
               <p className="text-sm text-slate-600 mb-4">
-                This will halt the entire signing workflow and notify the initiator. Please explain why you're declining.
+                This will halt the entire signing workflow and notify the initiator. Please select a reason for declining:
               </p>
-              <textarea
-                value={declineReason}
-                onChange={(e) => setDeclineReason(e.target.value)}
-                maxLength={500}
-                rows={4}
-                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 resize-none"
-                placeholder="e.g. Incorrect terms in section 3, wrong signer assigned..."
-              />
-              <p className="text-xs text-slate-400 text-right mt-1">{declineReason.length}/500</p>
+              
+              <div className="space-y-3 mb-4">
+                {['Information is incorrect', 'I am not authorized to sign this', 'Terms are unacceptable', 'Other'].map(reason => (
+                  <label key={reason} className="flex items-start cursor-pointer">
+                    <input
+                      type="radio"
+                      name="declineReason"
+                      value={reason}
+                      checked={declineReasonRadio === reason}
+                      onChange={(e) => setDeclineReasonRadio(e.target.value)}
+                      className="mt-0.5 h-4 w-4 text-red-600 focus:ring-red-500 border-slate-300"
+                    />
+                    <span className="ml-2.5 text-sm text-slate-700 font-medium">{reason}</span>
+                  </label>
+                ))}
+              </div>
+
+              {declineReasonRadio === 'Other' && (
+                <div className="animate-in fade-in duration-200">
+                  <textarea
+                    value={declineReasonText}
+                    onChange={(e) => setDeclineReasonText(e.target.value)}
+                    maxLength={500}
+                    rows={3}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 resize-none text-sm"
+                    placeholder="Please provide details..."
+                  />
+                  <p className="text-xs text-slate-400 text-right mt-1">{declineReasonText.length}/500</p>
+                </div>
+              )}
 
               <button
                 onClick={handleConfirmDecline}
-                disabled={!declineReason.trim()}
+                disabled={!declineReasonRadio || (declineReasonRadio === 'Other' && !declineReasonText.trim())}
                 className="w-full mt-4 py-3 px-4 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 Confirm Decline

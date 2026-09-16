@@ -54,15 +54,18 @@ export default function Review() {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const isPreview = searchParams.get('mode') === 'preview';
+  const isResume = searchParams.get('mode') === 'resume';
 
   const [fileUrl, setFileUrl] = useState(null);
   const [fileName, setFileName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isApproving, setIsApproving] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [pendingFields, setPendingFields] = useState([]);
 
   useEffect(() => {
     const loadReviewFile = async () => {
@@ -74,14 +77,43 @@ export default function Review() {
 
         const document = docRes.data.document;
         
-        if (!isPreview && document.status !== 'pending_review') {
+        if (!isPreview && !isResume && document.status !== 'pending_review') {
           toast.error("This document is not awaiting review.", { id: 'status-error' });
+          navigate('/documents');
+          return;
+        }
+
+        if (isResume && document.status !== 'declined') {
+          toast.error("Only declined documents can be resumed.", { id: 'status-error' });
           navigate('/documents');
           return;
         }
 
         setFileUrl(downloadRes.data.url);
         setFileName(downloadRes.data.fileName);
+
+        if (document.steps && (isPreview || isResume)) {
+          let fields = [];
+          document.steps.forEach(step => {
+            if (step.status === 'pending' || step.status === 'in_progress' || step.status === 'declined') {
+              try {
+                const stepFields = typeof step.signatureUiData === 'string' 
+                  ? JSON.parse(step.signatureUiData) 
+                  : (step.signatureUiData || []);
+                stepFields.forEach(f => {
+                  fields.push({
+                    ...f,
+                    signerName: step.signerName,
+                    signerEmail: step.signerEmail
+                  });
+                });
+              } catch (e) {
+                console.error("Failed to parse signatureUiData", e);
+              }
+            }
+          });
+          setPendingFields(fields);
+        }
       } catch (err) {
         toast.error(err.response?.data?.error || 'Could not load this document.');
         navigate('/documents');
@@ -103,6 +135,20 @@ export default function Review() {
       toast.error(err.response?.data?.error || 'Could not approve this document.');
     } finally {
       setIsApproving(false);
+    }
+  };
+
+  const handleResume = async () => {
+    setShowConfirm(false);
+    setIsResuming(true);
+    try {
+      await api.post(`/api/documents/${id}/resume`);
+      toast.success('Document has been resumed. The signer has been re-notified.');
+      navigate('/documents');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not resume this document.');
+    } finally {
+      setIsResuming(false);
     }
   };
 
@@ -157,11 +203,14 @@ export default function Review() {
           {!isPreview && (
             <button
               onClick={() => setShowConfirm(true)}
-              disabled={isApproving}
+              disabled={isApproving || isResuming}
               className="flex items-center gap-1.5 py-1.5 px-4 bg-teal-600 text-white text-sm font-semibold rounded-md hover:bg-teal-700 transition-colors disabled:opacity-50"
             >
               <CheckCircle2 className="h-4 w-4" />
-              {isApproving ? 'Sealing...' : 'Approve and Seal'}
+              {isResume 
+                ? (isResuming ? 'Resuming...' : 'Confirm & Resume')
+                : (isApproving ? 'Sealing...' : 'Approve and Seal')
+              }
             </button>
           )}
         </div>
@@ -174,21 +223,53 @@ export default function Review() {
           <Document
             file={fileUrl}
             onLoadSuccess={({ numPages }) => setTotalPages(numPages)}
-            loading={<div className="p-20 text-slate-400">Loading document…</div>}
+            className="flex flex-col items-center"
+            loading={
+              <div className="flex flex-col items-center justify-center p-12 text-slate-400">
+                <Loader2 className="h-8 w-8 animate-spin mb-4 text-slate-300" />
+                <p>Loading document...</p>
+              </div>
+            }
             error={<div className="p-20 text-red-500">Failed to load PDF.</div>}
           >
-            <Page pageNumber={currentPage} width={750} renderTextLayer={false} renderAnnotationLayer={false} className="shadow-lg" />
+            <div className="relative">
+              <Page pageNumber={currentPage} width={750} renderTextLayer={false} renderAnnotationLayer={false} className="shadow-lg" />
+              
+              {/* Overlay Pending Signature Fields */}
+              {pendingFields.filter(f => f.page === currentPage).map((field, idx) => (
+                <div
+                  key={`pending-field-${idx}`}
+                  style={{
+                    position: 'absolute',
+                    left: `${field.x || 0}px`,
+                    top: `${field.y || 0}px`,
+                    width: `${field.width || 120}px`,
+                    height: `${field.height || 40}px`,
+                  }}
+                  className="border-2 border-dashed border-amber-500 bg-amber-100/40 rounded flex items-center justify-center pointer-events-none z-10"
+                >
+                  <div className="flex flex-col text-center opacity-90 overflow-hidden w-full px-1">
+                    <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider truncate">{field.type}</span>
+                    <span className="text-[9px] font-medium text-amber-600 truncate max-w-full">{field.signerName}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </Document>
         )}
       </div>
 
       <ConfirmModal 
         isOpen={showConfirm}
-        title="Approve Document"
-        message="Approve and finalize this document? It will be sealed and emailed to everyone."
-        confirmText="Approve and Seal"
+        title={isResume ? "Resume Document" : "Approve Document"}
+        message={
+          isResume 
+            ? "Are you sure you want to resume this document? The signer will be notified to try again." 
+            : "Approve and finalize this document? It will be sealed and emailed to everyone."
+        }
+        confirmText={isResume ? "Resume Document" : "Approve and Seal"}
         isDanger={false}
-        onConfirm={handleApprove}
+        onConfirm={isResume ? handleResume : handleApprove}
         onCancel={() => setShowConfirm(false)}
       />
     </div>
