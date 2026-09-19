@@ -968,7 +968,7 @@ export default function Documents() {
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">Document tracking</p>
             <h1 className="text-2xl font-semibold text-slate-900">Documents</h1>
             <p className="text-sm text-slate-500 mt-1 max-w-md">
-              Everything you've sent for signature — including declines, resumes, and revisions.
+              Everything you've sent for signature  including declines, resumes, and revisions.
             </p>
           </div>
           <button
