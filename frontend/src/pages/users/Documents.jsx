@@ -63,6 +63,55 @@ function ConfirmModal({ isOpen, title, message, confirmText, isDanger, onConfirm
   );
 }
 
+function VoidModal({ isOpen, title, message, isDraft, onConfirm, onCancel }) {
+  const [reason, setReason] = useState('');
+  
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4 animate-in fade-in" onClick={onCancel}>
+      <div 
+        className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-2">{title}</h3>
+          <p className="text-sm text-slate-500 leading-relaxed mb-4">{message}</p>
+          
+          {!isDraft && (
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1">Reason for voiding</label>
+              <textarea
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                maxLength={500}
+                rows={3}
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:ring-2 focus:ring-red-500 resize-none"
+                placeholder="Explain why you are voiding this document..."
+              />
+            </div>
+          )}
+        </div>
+        <div className="bg-slate-50 border-t border-slate-100 p-4 flex justify-end gap-3">
+          <button onClick={onCancel} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200/50 rounded-md transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={() => {
+              onConfirm(isDraft ? null : reason);
+              setReason('');
+            }}
+            disabled={!isDraft && !reason.trim()}
+            className="px-4 py-2 text-sm font-medium bg-red-600 text-white hover:bg-red-700 focus:ring-2 focus:ring-red-600 focus:ring-offset-2 rounded-md transition-colors disabled:opacity-50"
+          >
+            {isDraft ? 'Delete' : 'Void Document'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StatusPill({ status }) {
   const meta = STATUS_META[status] || { label: status || 'Unknown', dot: 'bg-slate-400', text: 'text-slate-600', bg: 'bg-slate-100' };
   return (
@@ -260,14 +309,13 @@ function RowActions({ document, currentUser, onView, onVoided }) {
       message: isDraft
         ? `Delete "${document.fileName}"? This permanently removes it — it will not show up anywhere and cannot be recovered.`
         : `Void "${document.fileName}"? This cannot be undone, and any remaining signers will be notified.`,
-      confirmText: isDraft ? 'Delete' : 'Void',
-      isDanger: true,
-      action: async () => {
+      isDraft,
+      action: async (reason) => {
         setConfirmDialog(null);
         setIsMenuOpen(false);
         setIsVoiding(true);
         try {
-          const res = await api.post(`/api/documents/${document.id}/void`);
+          const res = await api.post(`/api/documents/${document.id}/void`, { reason });
           toast.success(res.data.message);
           onVoided?.();
         } catch (err) {
@@ -290,7 +338,17 @@ function RowActions({ document, currentUser, onView, onVoided }) {
     } else {
       items.push({ key: 'details', label: 'Details', icon: Info, onClick: () => onView(document.id) });
       const isInitiatorReviewing = document.status === 'pending_review' && document.initiatorId === currentUser?.id;
-      const reviewUrl = isInitiatorReviewing ? `/review/${document.id}` : `/review/${document.id}?mode=preview`;
+      const isInitiatorDeclined = document.status === 'declined' && document.initiatorId === currentUser?.id;
+      
+      let reviewUrl;
+      if (isInitiatorReviewing) {
+        reviewUrl = `/review/${document.id}`;
+      } else if (isInitiatorDeclined) {
+        reviewUrl = `/review/${document.id}?mode=resume`;
+      } else {
+        reviewUrl = `/review/${document.id}?mode=preview`;
+      }
+      
       items.push({ key: 'review', label: 'Review', icon: Eye, onClick: () => navigate(reviewUrl) });
     }
   if (document.pendingSignerToken) {
@@ -352,12 +410,11 @@ function RowActions({ document, currentUser, onView, onVoided }) {
         )}
       </div>
 
-      <ConfirmModal 
+      <VoidModal 
         isOpen={!!confirmDialog}
         title={confirmDialog?.title}
         message={confirmDialog?.message}
-        confirmText={confirmDialog?.confirmText}
-        isDanger={confirmDialog?.isDanger}
+        isDraft={confirmDialog?.isDraft}
         onConfirm={confirmDialog?.action}
         onCancel={() => setConfirmDialog(null)}
       />
@@ -620,29 +677,17 @@ function StepsTimeline({ documentId, isInitiator, steps, documentCreatedAt, docu
   );
 }
 
-function ReviseModal({ document, onClose, onSubmitted }) {
-  const [file, setFile] = useState(null);
+function ReviseModal({ document, onClose }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
     try {
-      const formData = new FormData();
-      if (file) formData.append('pdf_file', file);
-      const res = await api.post(`/api/documents/${document.id}/revise`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      toast.success('Revision created. Every signer has been notified.');
-
-      if (res.data.isInitiatorFirst && res.data.redirectToken) {
-        navigate(`/sign/${res.data.redirectToken}`);
-      } else {
-        onSubmitted();
-      }
+      const res = await api.post(`/api/documents/${document.id}/revise`);
+      navigate(`/upload?edit=${res.data.documentId}`);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not create the revision.');
-    } finally {
+      toast.error(err.response?.data?.error || 'Could not create the revision draft.');
       setIsSubmitting(false);
     }
   };
@@ -657,24 +702,8 @@ function ReviseModal({ document, onClose, onSubmitted }) {
           </button>
         </div>
         <p className="text-sm text-slate-500 mb-5">
-          A new version of <span className="font-medium text-slate-700">{document.fileName}</span> will be created. Every signer starts over, including anyone who already signed.
+          A new draft version of <span className="font-medium text-slate-700">{document.fileName}</span> will be created. You will be taken to the editor where you can upload a new file, change signers, or adjust fields before sending.
         </p>
-
-        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-          Corrected file (optional)
-        </label>
-        <div className="relative border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-slate-400 transition-colors">
-          <input
-            type="file"
-            accept="application/pdf"
-            onChange={(e) => setFile(e.target.files[0] || null)}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-          />
-          <UploadCloud className="h-6 w-6 mx-auto mb-2 text-slate-400" />
-          <p className="text-xs text-slate-600 font-medium">
-            {file ? file.name : 'Upload the corrected PDF, or leave blank to reuse the original file'}
-          </p>
-        </div>
 
         <div className="flex justify-end gap-3 mt-6">
           <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">
@@ -768,33 +797,26 @@ function ReviewPanel({ document, onRefresh }) {
 }
 
 function DeclineResolutionPanel({ document, onRefresh }) {
+  const navigate = useNavigate();
   const [isResuming, setIsResuming] = useState(false);
   const [isVoiding, setIsVoiding] = useState(false);
   const [isReviseModalOpen, setIsReviseModalOpen] = useState(false);
+  const [voidModalOpen, setVoidModalOpen] = useState(false);
 
   const declinedStep = document.steps.find((s) => s.status === 'declined');
   const resumeCount = document.resumeCount;
   const resumeLimitReached = resumeCount >= 3;
   const declineNumber = resumeCount + 1;
 
-  const handleResume = async () => {
-    setIsResuming(true);
-    try {
-      await api.post(`/api/documents/${document.id}/resume`);
-      toast.success(`${declinedStep?.signerName || 'The signer'} has been re-notified.`);
-      onRefresh();
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not resume this document.');
-    } finally {
-      setIsResuming(false);
-    }
+  const handleResume = () => {
+    navigate(`/review/${document.id}?mode=resume`);
   };
 
-  const handleVoid = async () => {
-    if (!window.confirm(`Void "${document.fileName}"? This cannot be undone, and any remaining signers will be notified.`)) return;
+  const handleConfirmVoid = async (reason) => {
+    setVoidModalOpen(false);
     setIsVoiding(true);
     try {
-      const res = await api.post(`/api/documents/${document.id}/void`);
+      const res = await api.post(`/api/documents/${document.id}/void`, { reason });
       toast.success(res.data.message);
       onRefresh();
     } catch (err) {
@@ -881,7 +903,7 @@ function DeclineResolutionPanel({ document, onRefresh }) {
       {resumeLimitReached && (
         <div className="flex justify-end mt-3">
           <button
-            onClick={handleVoid}
+            onClick={() => setVoidModalOpen(true)}
             disabled={isVoiding}
             className="flex items-center gap-1.5 text-xs font-semibold text-red-600 hover:text-red-700 transition-colors disabled:opacity-50"
           >
@@ -895,9 +917,17 @@ function DeclineResolutionPanel({ document, onRefresh }) {
         <ReviseModal
           document={document}
           onClose={() => setIsReviseModalOpen(false)}
-          onSubmitted={() => { setIsReviseModalOpen(false); onRefresh(); }}
         />
       )}
+
+      <VoidModal 
+        isOpen={voidModalOpen}
+        title="Void Document"
+        message={`Void "${document.fileName}"? This cannot be undone, and any remaining signers will be notified.`}
+        isDraft={false}
+        onConfirm={handleConfirmVoid}
+        onCancel={() => setVoidModalOpen(false)}
+      />
     </div>
   );
 }
