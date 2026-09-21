@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { ChevronLeft, ChevronRight, ArrowLeft, CheckCircle2, Download } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowLeft, CheckCircle2, Download, Loader2 } from 'lucide-react';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -51,11 +51,15 @@ function ConfirmModal({ isOpen, title, message, confirmText, isDanger, onConfirm
 export default function Review() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const isPreview = searchParams.get('mode') === 'preview';
 
   const [fileUrl, setFileUrl] = useState(null);
   const [fileName, setFileName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isApproving, setIsApproving] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -63,18 +67,30 @@ export default function Review() {
   useEffect(() => {
     const loadReviewFile = async () => {
       try {
-        const res = await api.get(`/api/documents/${id}/review`);
-        setFileUrl(res.data.url);
-        setFileName(res.data.fileName);
+        const [docRes, downloadRes] = await Promise.all([
+          api.get(`/api/documents/${id}`),
+          api.get(`/api/documents/${id}/download`)
+        ]);
+
+        const document = docRes.data.document;
+        
+        if (!isPreview && document.status !== 'pending_review') {
+          toast.error("This document is not awaiting review.", { id: 'status-error' });
+          navigate('/documents');
+          return;
+        }
+
+        setFileUrl(downloadRes.data.url);
+        setFileName(downloadRes.data.fileName);
       } catch (err) {
-        toast.error(err.response?.data?.error || 'Could not load this document for review.');
+        toast.error(err.response?.data?.error || 'Could not load this document.');
         navigate('/documents');
       } finally {
         setIsLoading(false);
       }
     };
     loadReviewFile();
-  }, [id, navigate]);
+  }, [id, navigate, isPreview]);
 
   const handleApprove = async () => {
     setShowConfirm(false);
@@ -110,17 +126,44 @@ export default function Review() {
         <span className="text-sm font-semibold text-slate-900 truncate max-w-xs">{fileName} <span className="text-slate-400 font-normal">· read-only</span></span>
 
         <div className="flex items-center gap-3">
-          <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors">
-            <Download className="h-4 w-4" /> Download PDF
-          </a>
-          <button
-            onClick={() => setShowConfirm(true)}
-            disabled={isApproving}
-            className="flex items-center gap-1.5 py-1.5 px-4 bg-teal-600 text-white text-sm font-semibold rounded-md hover:bg-teal-700 transition-colors disabled:opacity-50"
+          <button 
+            disabled={isDownloading}
+            onClick={async () => {
+              setIsDownloading(true);
+              try {
+                const response = await fetch(fileUrl);
+                if (!response.ok) throw new Error('Failed to fetch file');
+                const blob = await response.blob();
+                const objectUrl = window.URL.createObjectURL(blob);
+                const link = window.document.createElement('a');
+                link.href = objectUrl;
+                link.download = fileName || 'document.pdf';
+                window.document.body.appendChild(link);
+                link.click();
+                window.document.body.removeChild(link);
+                window.URL.revokeObjectURL(objectUrl);
+              } catch (err) {
+                toast.error('Could not download file directly.');
+                window.open(fileUrl, '_blank', 'noopener,noreferrer');
+              } finally {
+                setIsDownloading(false);
+              }
+            }}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors disabled:opacity-50"
           >
-            <CheckCircle2 className="h-4 w-4" />
-            {isApproving ? 'Sealing...' : 'Approve and Seal'}
+            {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            {isDownloading ? 'Downloading...' : 'Download PDF'}
           </button>
+          {!isPreview && (
+            <button
+              onClick={() => setShowConfirm(true)}
+              disabled={isApproving}
+              className="flex items-center gap-1.5 py-1.5 px-4 bg-teal-600 text-white text-sm font-semibold rounded-md hover:bg-teal-700 transition-colors disabled:opacity-50"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              {isApproving ? 'Sealing...' : 'Approve and Seal'}
+            </button>
+          )}
         </div>
       </div>
 
