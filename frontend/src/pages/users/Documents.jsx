@@ -439,12 +439,35 @@ function DocumentTableRow({ document, currentUser, isChecked, onCheck, onOpen, o
   );
 }
 
-function StepsTimeline({ steps, documentCreatedAt, documentUpdatedAt }) {
+function StepsTimeline({ documentId, isInitiator, steps, documentCreatedAt, documentUpdatedAt, onRefresh }) {
+  const [editingStepId, setEditingStepId] = useState(null);
+  const [editForm, setEditForm] = useState({ name: '', email: '' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleEditSave = async (stepId) => {
+    if (!editForm.name.trim() || !editForm.email.trim()) {
+      toast.error('Name and email are required');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await api.put(`/api/documents/${documentId}/steps/${stepId}`, editForm);
+      toast.success('Signer updated successfully!');
+      setEditingStepId(null);
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to update signer');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-3 mt-4">
       {steps.map((step, index) => {
         const isSigned = step.status === 'completed';
         const isDeclined = step.status === 'declined';
+        const isPending = step.status === 'pending';
         
         // Calculate when it reached this user (either document start or previous step signed time)
         const reachedAt = step.reachedAt || (index === 0 ? documentCreatedAt : steps[index - 1]?.signedAt);
@@ -490,10 +513,59 @@ function StepsTimeline({ steps, documentCreatedAt, documentUpdatedAt }) {
                   }`}>
                     {isSigned ? 'Signed' : isDeclined ? 'Declined' : 'Pending'}
                   </span>
+                  {isInitiator && isPending && editingStepId !== step.id && (
+                    <button
+                      onClick={() => {
+                        setEditingStepId(step.id);
+                        setEditForm({ name: step.signerName, email: step.signerEmail });
+                      }}
+                      className="ml-2 text-slate-400 hover:text-teal-600 transition-colors"
+                      title="Edit Signer"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                  )}
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-slate-900">{step.signerName}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">{step.signerEmail}</p>
+                  {editingStepId === step.id ? (
+                    <div className="mt-2 space-y-2">
+                      <input 
+                        type="text" 
+                        value={editForm.name} 
+                        onChange={e => setEditForm({...editForm, name: e.target.value})} 
+                        className="w-full text-sm border border-slate-300 rounded px-2 py-1.5 focus:ring-teal-500 focus:border-teal-500"
+                        placeholder="Signer Name"
+                      />
+                      <input 
+                        type="email" 
+                        value={editForm.email} 
+                        onChange={e => setEditForm({...editForm, email: e.target.value})} 
+                        className="w-full text-sm border border-slate-300 rounded px-2 py-1.5 focus:ring-teal-500 focus:border-teal-500"
+                        placeholder="Signer Email"
+                      />
+                      <div className="flex gap-2 pt-1">
+                        <button 
+                          onClick={() => handleEditSave(step.id)} 
+                          disabled={isSubmitting} 
+                          className="text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded transition-colors disabled:opacity-50"
+                        >
+                          Save
+                        </button>
+                        <button 
+                          onClick={() => setEditingStepId(null)} 
+                          disabled={isSubmitting} 
+                          className="text-xs font-semibold bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-1.5 rounded transition-colors disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm font-bold text-slate-900">{step.signerName}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{step.signerEmail}</p>
+                    </>
+                  )}
                 </div>
               </div>
               
@@ -644,7 +716,7 @@ function ReviewPanel({ document, onRefresh }) {
 
   return (
     <div className="mt-5">
-      <StepsTimeline steps={document.steps} documentCreatedAt={document.createdAt} />
+      <StepsTimeline documentId={document.id} isInitiator={true} steps={document.steps} documentCreatedAt={document.createdAt} onRefresh={onRefresh} />
 
       <div className="mt-5 border border-teal-200 bg-teal-50 rounded-xl p-4">
         <div className="flex items-center gap-2.5 mb-2">
@@ -762,7 +834,7 @@ function DeclineResolutionPanel({ document, onRefresh }) {
         </div>
       )}
 
-      <StepsTimeline steps={document.steps} documentCreatedAt={document.createdAt} />
+      <StepsTimeline documentId={document.id} isInitiator={true} steps={document.steps} documentCreatedAt={document.createdAt} onRefresh={onRefresh} />
 
       <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mt-6 mb-3">
         {resumeLimitReached ? 'Choose one' : 'Choose how to proceed'}
@@ -1220,7 +1292,7 @@ export default function Documents() {
                   <ReviewPanel document={detail} onRefresh={handleRefresh} />
                 ) : (
                   <div className="mt-5">
-                    <StepsTimeline steps={detail.steps} documentCreatedAt={detail.createdAt} documentUpdatedAt={detail.updatedAt} />
+                    <StepsTimeline documentId={detail.id} isInitiator={currentUser?.id === detail.initiatorId} steps={detail.steps} documentCreatedAt={detail.createdAt} documentUpdatedAt={detail.updatedAt} onRefresh={handleRefresh} />
                     {detail.status === 'completed' && (
                       <div className="flex items-center gap-2 mt-4 text-sm text-emerald-600">
                         <CheckCircle2 className="h-4 w-4" /> All signatures collected and sealed.
