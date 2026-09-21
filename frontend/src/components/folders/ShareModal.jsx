@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Users, Shield, Plus, Loader2, Globe, Lock } from 'lucide-react';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
+import Select from '../ui/Select';
 
 export default function ShareModal({ isOpen, onClose, folderId }) {
   const [accessList, setAccessList] = useState([]);
@@ -187,15 +188,16 @@ export default function ShareModal({ isOpen, onClose, folderId }) {
                 </ul>
               )}
             </div>
-            <select
+            <Select
               value={newUserRole}
-              onChange={(e) => setNewUserRole(e.target.value)}
-              className="px-3 py-2 border border-slate-300 rounded-md bg-slate-50 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-            >
-              <option value="viewer">Viewer</option>
-              <option value="editor">Editor</option>
-              <option value="manager">Manager</option>
-            </select>
+              onChange={(val) => setNewUserRole(val)}
+              options={[
+                { value: 'viewer', label: 'Viewer' },
+                { value: 'editor', label: 'Editor' },
+                { value: 'manager', label: 'Manager' }
+              ]}
+              className="w-32"
+            />
             <button
               type="submit"
               disabled={isUpdating || !newUserEmail}
@@ -240,17 +242,18 @@ export default function ShareModal({ isOpen, onClose, folderId }) {
                     </div>
                     
                     {access.userId !== ownerId && !access.inherited && (
-                      <select
+                      <Select
                         value={access.role}
-                        onChange={(e) => handleUpdateAccess(access.userId, e.target.value)}
-                        disabled={isUpdating}
-                        className="text-sm border-0 bg-transparent text-slate-600 font-medium focus:ring-0 cursor-pointer hover:bg-slate-50 rounded"
-                      >
-                        <option value="viewer">Viewer</option>
-                        <option value="editor">Editor</option>
-                        <option value="manager">Manager</option>
-                        <option value="remove" className="text-red-600">Remove access</option>
-                      </select>
+                        onChange={(val) => handleUpdateAccess(access.userId, val)}
+                        options={[
+                          { value: 'viewer', label: 'Viewer' },
+                          { value: 'editor', label: 'Editor' },
+                          { value: 'manager', label: 'Manager' },
+                          { value: 'remove', label: 'Remove access', className: 'text-red-600' }
+                        ]}
+                        buttonClassName="text-sm border-0 bg-transparent text-slate-600 font-medium hover:bg-slate-50 rounded cursor-pointer"
+                        className="w-36"
+                      />
                     )}
                     {access.inherited && (
                       <div className="text-sm text-slate-400 font-medium px-2">{access.role}</div>

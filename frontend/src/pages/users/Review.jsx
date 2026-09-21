@@ -67,32 +67,44 @@ export default function Review() {
   const [totalPages, setTotalPages] = useState(1);
   const [pendingFields, setPendingFields] = useState([]);
 
+  const isTemplate = searchParams.get('model') === 'Template';
+
   useEffect(() => {
     const loadReviewFile = async () => {
       try {
         const [docRes, downloadRes] = await Promise.all([
-          api.get(`/api/documents/${id}`),
-          api.get(`/api/documents/${id}/download`)
+          api.get(isTemplate ? `/api/templates/${id}` : `/api/documents/${id}`),
+          api.get(isTemplate ? `/api/templates/${id}/download` : `/api/documents/${id}/download`)
         ]);
 
         const document = docRes.data.document;
         
-        if (!isPreview && !isResume && document.status !== 'pending_review') {
-          toast.error("This document is not awaiting review.", { id: 'status-error' });
-          navigate('/documents');
-          return;
-        }
+        if (!isTemplate) {
+          if (!isPreview && !isResume && document.status !== 'pending_review') {
+            toast.error("This document is not awaiting review.", { id: 'status-error' });
+            navigate('/documents');
+            return;
+          }
 
-        if (isResume && document.status !== 'declined') {
-          toast.error("Only declined documents can be resumed.", { id: 'status-error' });
-          navigate('/documents');
-          return;
+          if (isResume && document.status !== 'declined') {
+            toast.error("Only declined documents can be resumed.", { id: 'status-error' });
+            navigate('/documents');
+            return;
+          }
         }
 
         setFileUrl(downloadRes.data.url);
         setFileName(downloadRes.data.fileName);
 
-        if (document.steps && (isPreview || isResume)) {
+        if (isTemplate) {
+          // Extract template fields
+          const fields = document.templateConfig?.fields || [];
+          setPendingFields(fields.map(f => ({
+            ...f,
+            signerName: `Signer ${f.signerOrder}`,
+            signerEmail: ''
+          })));
+        } else if (document.steps && (isPreview || isResume)) {
           let fields = [];
           document.steps.forEach(step => {
             if (step.status === 'pending' || step.status === 'in_progress' || step.status === 'declined') {
@@ -115,14 +127,14 @@ export default function Review() {
           setPendingFields(fields);
         }
       } catch (err) {
-        toast.error(err.response?.data?.error || 'Could not load this document.');
+        toast.error(err.response?.data?.error || 'Could not load this file.');
         navigate('/documents');
       } finally {
         setIsLoading(false);
       }
     };
     loadReviewFile();
-  }, [id, navigate, isPreview]);
+  }, [id, navigate, isPreview, isResume, isTemplate]);
 
   const handleApprove = async () => {
     setShowConfirm(false);
@@ -200,7 +212,7 @@ export default function Review() {
             {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             {isDownloading ? 'Downloading...' : 'Download PDF'}
           </button>
-          {!isPreview && (
+          {!isPreview && !isTemplate && (
             <button
               onClick={() => setShowConfirm(true)}
               disabled={isApproving || isResuming}
@@ -211,6 +223,22 @@ export default function Review() {
                 ? (isResuming ? 'Resuming...' : 'Confirm & Resume')
                 : (isApproving ? 'Sealing...' : 'Approve and Seal')
               }
+            </button>
+          )}
+          {isTemplate && (
+            <button
+              onClick={async () => {
+                try {
+                  const res = await api.post(`/api/templates/${id}/use`);
+                  toast.success(`Started from template.`);
+                  navigate(`/upload?edit=${res.data.document.id}`);
+                } catch (err) {
+                  toast.error(err.response?.data?.error || 'Could not start a document from this template.');
+                }
+              }}
+              className="flex items-center gap-1.5 py-1.5 px-4 bg-slate-900 text-white text-sm font-semibold rounded-md hover:bg-slate-800 transition-colors"
+            >
+              Use Template
             </button>
           )}
         </div>

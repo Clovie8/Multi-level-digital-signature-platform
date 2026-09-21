@@ -4,10 +4,11 @@ import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import {
   UploadCloud, Users, FileSignature, CheckCircle, Plus, Trash2,
-  ArrowRight, PenTool, Calendar, Type, UserSquare, ChevronLeft, ChevronRight, Search, Send, X
+  ArrowRight, PenTool, Calendar, Type, UserSquare, ChevronLeft, ChevronRight, Search, Send, X, LayoutTemplate
 } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Rnd } from 'react-rnd';
+import Select from 'react-select';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -43,6 +44,28 @@ const DraggableField = ({ icon: Icon, label, type, activeColorClasses, onDragSta
   </div>
 );
 
+// Styling for the template picker to match the slate/white theme used everywhere else
+const templateSelectStyles = {
+  control: (base, state) => ({
+    ...base,
+    minHeight: '46px',
+    borderRadius: '0.5rem',
+    borderColor: state.isFocused ? '#0f172a' : '#e2e8f0',
+    boxShadow: state.isFocused ? '0 0 0 1px #0f172a' : 'none',
+    '&:hover': { borderColor: '#94a3b8' }
+  }),
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: state.isSelected ? '#0f172a' : state.isFocused ? '#f1f5f9' : 'white',
+    color: state.isSelected ? '#ffffff' : '#0f172a',
+    cursor: 'pointer',
+    padding: '10px 12px'
+  }),
+  placeholder: (base) => ({ ...base, color: '#94a3b8', fontSize: '0.875rem' }),
+  singleValue: (base) => ({ ...base, fontSize: '0.875rem' }),
+  menu: (base) => ({ ...base, borderRadius: '0.5rem', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' })
+};
+
 export default function Upload() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -68,6 +91,18 @@ export default function Upload() {
   const [file, setFile] = useState(null);
   const [existingFile, setExistingFile] = useState(null); // { url, fileName } — draft being edited
   const [documentId, setDocumentId] = useState(null);
+
+  // Upload Step Mode: 'new' PDF upload vs starting from a saved 'template'
+  const [uploadMode, setUploadMode] = useState('new');
+  const [templates, setTemplates] = useState([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(null);
+
+  // Flag set at upload time; the actual template is saved right before dispatch,
+  // once fields + signer roles are finalized (a raw upload alone has neither).
+  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const [templatesFetched, setTemplatesFetched] = useState(false);
 
   // Signer Hierarchy State
   const [isInitiatorFirst, setIsInitiatorFirst] = useState(false);
@@ -137,6 +172,7 @@ export default function Upload() {
               if (parsed.isInitiatorFirst !== undefined) setIsInitiatorFirst(parsed.isInitiatorFirst);
               if (parsed.initiatorReceivesFinalCopy !== undefined) setInitiatorReceivesFinalCopy(parsed.initiatorReceivesFinalCopy);
             } catch (err) {
+              console.error('Failed to load cached draft from server', err);
               // If the document was deleted on the server, clear the dead cache
               localStorage.removeItem(CACHE_KEY);
             }
@@ -173,6 +209,26 @@ export default function Upload() {
     setTotalPages(numPages);
     setCurrentPage(1);
   };
+
+
+  useEffect(() => {
+    if (uploadMode !== 'template' || templatesFetched) return;
+
+    const fetchTemplates = async () => {
+      setTemplatesLoading(true);
+      try {
+        const res = await api.get('/api/templates');
+        setTemplates(res.data.templates || []);
+      } catch (err) {
+        toast.error(err.response?.data?.error || 'Could not load templates.');
+      } finally {
+        setTemplatesLoading(false);
+        setTemplatesFetched(true);
+      }
+    };
+    fetchTemplates();
+  }, [uploadMode, templatesFetched]);
+
 
   // 1: UPLOAD HANDLERS
   const handleFileChange = (e) => {
@@ -219,6 +275,33 @@ export default function Upload() {
       setIsLoading(false);
     }
   };
+
+
+   const handleUseTemplateSubmit = async () => {
+    if (!selectedTemplateId) return toast.error('Please select a template first.');
+
+    setIsLoading(true);
+    try {
+      const res = await api.post(`/api/templates/${selectedTemplateId}/use`);
+      const { document: newDoc, signers: templateSigners, fields: templateFields } = res.data;
+
+      setDocumentId(newDoc.id);
+      setExistingFile({ url: newDoc.fileUrl, fileName: newDoc.fileName });
+      setFile(null);
+
+      if (templateSigners?.length) setSigners(templateSigners);
+      if (templateFields?.length) setFields(templateFields);
+
+      toast.success(`Started from "${newDoc.templateName || 'template'}".`);
+      setCurrentStep(2);
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Could not start a document from this template.');
+      console.error(error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
 
   // 2: HIERARCHY HANDLERS
   const toggleInitiatorFirst = () => {
@@ -331,6 +414,10 @@ export default function Upload() {
       return toast.error(`Please assign at least one field to: ${signersWithoutFields.map(s => s.name || s.role).join(', ')}`);
     }
 
+    if (saveAsTemplate && !templateName.trim()) {
+      return toast.error('Please give your template a name.');
+    }
+
     setIsLoading(true);
 
     try {
@@ -342,6 +429,18 @@ export default function Upload() {
         }
         return s;
       });
+
+      if (saveAsTemplate) {
+        try {
+          await api.patch(`/api/documents/${documentId}/draft-config`, {
+            signers: finalSigners, fields, isInitiatorFirst, initiatorReceivesFinalCopy, currentStep
+          });
+          await api.post(`/api/documents/${documentId}/save-as-template`, { name: templateName.trim() });
+          toast.success('Template saved.');
+        } catch (templateErr) {
+          toast.error(templateErr.response?.data?.error || 'Could not save as template — sending document anyway.');
+        }
+      }
 
       // We now include the dragged 'fields' in the payload
       const res = await api.post(`/api/documents/${documentId}/dispatch`, {
@@ -367,6 +466,8 @@ export default function Upload() {
         setDocumentId(null);
         setFields([]);
         setSigners([{ id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200', receivesFinalCopy: true }]);
+        setSaveAsTemplate(false);
+        setTemplateName('');
       }
     } catch (error) {
       console.error(error);
@@ -521,35 +622,145 @@ export default function Upload() {
         {currentStep === 1 && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
             <h2 className="text-2xl font-semibold text-slate-900 mb-2">Upload your document</h2>
-            <p className="text-slate-500 text-sm mb-8">Securely upload the PDF you need signed. It will be encrypted and stored in Cloudflare R2.</p>
+            <p className="text-slate-500 text-sm mb-6">
+              {uploadMode === 'new'
+                ? 'Securely upload the PDF you need signed. It will be encrypted and stored in Cloudflare R2.'
+                : 'Start from a saved template, its field layout and signer roles carry over automatically.'}
+            </p>
 
-            <div className="relative border-2 border-dashed border-slate-300 rounded-lg p-12 hover:border-slate-500 hover:bg-slate-50 transition-all group">
-              <input
-                type="file"
-                accept="application/pdf"
-                onChange={handleFileChange}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              />
-              <div className="flex flex-col items-center pointer-events-none">
-                <UploadCloud className={`h-12 w-12 mb-4 transition-colors ${file || existingFile ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
-                <span className="text-sm font-medium text-slate-900">
-                  {file ? file.name : existingFile ? existingFile.fileName : 'Click to browse or drag PDF here'}
-                </span>
-                <span className="text-xs text-slate-500 mt-2">
-                  {existingFile && !file ? 'Drop a new PDF here to replace it' : 'Maximum file size: 10MB'}
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-8 flex justify-end">
+            {/* Mode toggle */}
+            <div className="inline-flex rounded-lg border border-slate-200 p-1 mb-8 bg-slate-50">
               <button
-                onClick={handleUploadSubmit}
-                disabled={isLoading || (!file && !existingFile)}
-                className="flex items-center py-2.5 px-6 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors disabled:opacity-50"
+                type="button"
+                onClick={() => setUploadMode('new')}
+                className={`flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${uploadMode === 'new' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
               >
-                {isLoading ? 'Uploading securely...' : 'Continue to Hierarchy'} <ArrowRight className="ml-2 h-4 w-4" />
+                <UploadCloud className="h-3.5 w-3.5" /> Upload New PDF
+              </button>
+              <button
+                type="button"
+                onClick={() => setUploadMode('template')}
+                className={`flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${uploadMode === 'template' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <LayoutTemplate className="h-3.5 w-3.5" /> Use Template
               </button>
             </div>
+
+            {uploadMode === 'new' ? (
+              <>
+                <div className="relative border-2 border-dashed border-slate-300 rounded-lg p-12 hover:border-slate-500 hover:bg-slate-50 transition-all group">
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    onChange={handleFileChange}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <div className="flex flex-col items-center pointer-events-none">
+                    <UploadCloud className={`h-12 w-12 mb-4 transition-colors ${file || existingFile ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
+                    <span className="text-sm font-medium text-slate-900">
+                      {file ? file.name : existingFile ? existingFile.fileName : 'Click to browse or drag PDF here'}
+                    </span>
+                    <span className="text-xs text-slate-500 mt-2">
+                      {existingFile && !file ? 'Drop a new PDF here to replace it' : 'Maximum file size: 10MB'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-4 text-left bg-slate-50 border border-slate-200 rounded-lg overflow-hidden">
+                  <div className="p-2.5 flex items-center hover:bg-slate-100/50 transition-colors">
+                    <input
+                      type="checkbox"
+                      id="saveAsTemplate"
+                      checked={saveAsTemplate}
+                      onChange={(e) => setSaveAsTemplate(e.target.checked)}
+                      className="h-4 w-4 text-slate-900 focus:ring-slate-900 border-slate-300 rounded cursor-pointer"
+                    />
+                    <label htmlFor="saveAsTemplate" className="ml-3 block text-sm font-medium text-slate-900 cursor-pointer flex-grow">
+                      Save this as a reusable template
+                    </label>
+                  </div>
+                  {saveAsTemplate && (
+                    <div className="p-2.5 pt-0">
+                      <input
+                        type="text"
+                        placeholder="Template name (e.g. NDA — Standard)"
+                        value={templateName}
+                        onChange={(e) => setTemplateName(e.target.value)}
+                        className="block w-full text-sm border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900 py-2 px-3 border"
+                      />
+                      <p className="text-xs text-slate-500 mt-1.5">
+                        Saved once you finish setting up hierarchy and fields, right before sending.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-6 flex justify-end">
+                  <button
+                    onClick={handleUploadSubmit}
+                    disabled={isLoading || (!file && !existingFile)}
+                    className="flex items-center py-2.5 px-6 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors disabled:opacity-50"
+                  >
+                    {isLoading ? 'Uploading securely...' : 'Continue to Hierarchy'} <ArrowRight className="ml-2 h-4 w-4" />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-left">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Your templates</label>
+
+                  <Select
+                    options={templates.map(t => ({
+                      value: t.id,
+                      label: t.name,
+                      signerCount: t.signerCount,
+                      usageCount: t.usageCount
+                    }))}
+                    value={
+                      selectedTemplateId
+                        ? templates
+                            .map(t => ({ value: t.id, label: t.name, signerCount: t.signerCount, usageCount: t.usageCount }))
+                            .find(o => o.value === selectedTemplateId) || null
+                        : null
+                    }
+                    onChange={(option) => setSelectedTemplateId(option ? option.value : null)}
+                    isLoading={templatesLoading}
+                    isClearable
+                    isSearchable
+                    placeholder="Search your templates..."
+                    noOptionsMessage={() => templatesLoading ? 'Loading templates...' : 'No templates yet — save a completed document as one to reuse it here.'}
+                    maxMenuHeight={112}
+                    styles={templateSelectStyles}
+                    formatOptionLabel={(option) => (
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-md flex items-center justify-center bg-slate-100 text-slate-500 flex-shrink-0">
+                          <LayoutTemplate className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-slate-900">{option.label}</div>
+                          <div className="text-xs text-slate-500">
+                            {option.signerCount} signer{option.signerCount !== 1 ? 's' : ''}
+                            {typeof option.usageCount === 'number' ? ` · used ${option.usageCount}×` : ''}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  />
+                </div>
+
+                <div className="mt-8 flex justify-end">
+                  <button
+                    onClick={handleUseTemplateSubmit}
+                    disabled={isLoading || !selectedTemplateId}
+                    className="flex items-center py-2.5 px-6 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors disabled:opacity-50"
+                  >
+                    {isLoading ? 'Loading template...' : 'Continue to Hierarchy'} <ArrowRight className="ml-2 h-4 w-4" />
+                  </button>
+                </div>
+              </>
+            )}
+            
           </div>
         )}
 

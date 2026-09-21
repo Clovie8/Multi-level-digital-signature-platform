@@ -13,6 +13,7 @@ import AuditLog from './pages/admin/AuditLog';
 import Layout from './components/Layout';
 import ProtectedRoute from './routes/ProtectedRoute';
 import AdminRoutes from './routes/AdminRoutes';
+import Folder from './pages/users/Folder';
 
 function App() {
   return (
@@ -39,6 +40,7 @@ function App() {
             <Route path="/settings" element={<Settings />} />
             <Route path="/upload" element={<Upload />} />
             <Route path="/review/:id" element={<Review />} />
+            <Route path="/folder" element={<Folder />} />
 
             {/* Admin-only routes*/}
             <Route element={<AdminRoutes />}>
