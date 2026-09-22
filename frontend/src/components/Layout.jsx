@@ -16,7 +16,10 @@ const generateInitials = (name) => {
 export default function Layout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true); // New state for desktop toggle
+  const [isSidebarPinned, setIsSidebarPinned] = useState(false);
+  const [isSidebarHovered, setIsSidebarHovered] = useState(false);
+  
+  const isSidebarExpanded = isSidebarPinned || isSidebarHovered;
 
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
@@ -129,14 +132,18 @@ export default function Layout() {
     <div className="flex h-screen bg-[#FAFAFA] font-sans overflow-hidden">
       
       {/* DESKTOP SIDEBAR */}
-      <aside className={`hidden md:flex flex-col bg-slate-900 border-r border-slate-800 z-20 relative transition-all duration-300 ${isSidebarExpanded ? 'w-64' : 'w-20'}`}>
+      <aside 
+        className={`hidden md:flex flex-col bg-slate-900 border-r border-slate-800 z-20 relative transition-all duration-300 ${isSidebarExpanded ? 'w-64' : 'w-20'}`}
+        onMouseEnter={() => setIsSidebarHovered(true)}
+        onMouseLeave={() => setIsSidebarHovered(false)}
+      >
         
         {/* Toggle Button */}
         <button 
-          onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
+          onClick={() => setIsSidebarPinned(!isSidebarPinned)}
           className="absolute -right-3 top-5 bg-slate-800 border border-slate-600 rounded-full p-1 text-slate-400 hover:text-white shadow-md z-50 focus:outline-none transition-colors"
         >
-          {isSidebarExpanded ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          {isSidebarPinned ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
 
         <div className={`flex items-center h-16 border-b border-slate-800 transition-all duration-300 ${isSidebarExpanded ? 'px-6 justify-start' : 'justify-center'}`}>
