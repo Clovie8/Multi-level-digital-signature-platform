@@ -121,6 +121,7 @@ export default function Upload() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [fields, setFields] = useState([]);
+  const [dueDate, setDueDate] = useState('');
 
   // Responsive Canvas Scaling
   const pdfContainerRef = useRef(null);
@@ -158,6 +159,7 @@ export default function Upload() {
           if (draftConfig.signers?.length) setSigners(draftConfig.signers);
           if (draftConfig.fields?.length) setFields(draftConfig.fields);
           if (draftConfig.isInitiatorFirst !== undefined) setIsInitiatorFirst(draftConfig.isInitiatorFirst);
+          if (draftConfig.dueDate) setDueDate(draftConfig.dueDate);
           if (draftConfig.initiatorReceivesFinalCopy !== undefined) setInitiatorReceivesFinalCopy(draftConfig.initiatorReceivesFinalCopy);
           if (draftConfig.currentStep) setCurrentStep(draftConfig.currentStep);
         }
@@ -453,7 +455,7 @@ export default function Upload() {
         return s;
       });
 
-      await api.patch(`/api/documents/${documentId}/draft-config`, { signers: finalSigners, fields, isInitiatorFirst, initiatorReceivesFinalCopy, currentStep });
+      await api.patch(`/api/documents/${documentId}/draft-config`, { signers: finalSigners, fields, isInitiatorFirst, initiatorReceivesFinalCopy, currentStep, dueDate });
       toast.success('Saved as draft.');
       localStorage.removeItem('upload_draft_state');
       navigate('/documents');
@@ -493,7 +495,7 @@ export default function Upload() {
       if (saveAsTemplate) {
         try {
           await api.patch(`/api/documents/${documentId}/draft-config`, {
-            signers: finalSigners, fields, isInitiatorFirst, initiatorReceivesFinalCopy, currentStep
+            signers: finalSigners, fields, isInitiatorFirst, initiatorReceivesFinalCopy, currentStep, dueDate
           });
           await api.post(`/api/documents/${documentId}/save-as-template`, { name: templateName.trim() });
           toast.success('Template saved.');
@@ -506,7 +508,8 @@ export default function Upload() {
       const res = await api.post(`/api/documents/${documentId}/dispatch`, {
         signers: finalSigners,
         fields: fields,
-        initiatorReceivesFinalCopy: initiatorReceivesFinalCopy
+        initiatorReceivesFinalCopy: initiatorReceivesFinalCopy,
+        dueDate: dueDate || null
       }, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -1011,7 +1014,7 @@ export default function Upload() {
               </div>
 
               {/* Draggable Fields List */}
-              <div className="p-3">
+              <div className="p-3 border-b border-slate-200">
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Standard Fields</label>
                 <div className="grid grid-cols-2 gap-2">
                   <DraggableField icon={PenTool} label="Signature" type="Signature" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
@@ -1020,6 +1023,23 @@ export default function Upload() {
                 
                   <DraggableField icon={UserSquare} label="Name" type="Name" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
                   <DraggableField icon={Type} label="Text Box" type="Text Box" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
+                </div>
+              </div>
+
+              {/* Document Settings */}
+              <div className="p-3">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Document Settings</label>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Due Date & Time (Optional)</label>
+                    <input
+                      type="datetime-local"
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                      min={new Date().toISOString().slice(0, 16)} // prevent past dates and times
+                      className="block w-full text-xs border-slate-200 rounded focus:ring-slate-900 focus:border-slate-900 py-2 px-3 border"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -1224,4 +1244,4 @@ export default function Upload() {
       </main>
     </div>
   );
-}
+}
