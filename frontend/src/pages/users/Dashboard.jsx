@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { PieChart, Pie, Cell, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import api from '../../lib/api';
-import { Plus, Loader2, ChevronRight, PenTool } from 'lucide-react';
+import { Plus, Loader2, ChevronRight, PenTool, Clock, Trophy } from 'lucide-react';
 
 const STATUS_COLORS = {
   awaitingSignature: '#f59e0b',
@@ -71,6 +71,20 @@ export default function Dashboard() {
   // Add +2 to length to include a padding tick above the maximum value (e.g. if max is 3, show up to 4)
   const yTicks = maxDocs <= 10 && maxDocs > 0 ? Array.from({ length: maxDocs + 2 }, (_, i) => i) : undefined;
 
+  const formatTimeHuman = (totalHours) => {
+    if (totalHours < 1) {
+      return `${Math.round(totalHours * 60)} mins`;
+    }
+    if (totalHours < 24) {
+      const hrs = Math.floor(totalHours);
+      const mins = Math.round((totalHours - hrs) * 60);
+      return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`;
+    }
+    const days = Math.floor(totalHours / 24);
+    const remainingHrs = Math.floor(totalHours % 24);
+    return remainingHrs > 0 ? `${days}d ${remainingHrs}h` : `${days}d`;
+  };
+
   return (
     <div className="min-h-full bg-white">
       <div className="max-w-[1400px] mx-auto px-6 py-8">
@@ -87,6 +101,21 @@ export default function Dashboard() {
                 ? `${stats.waitingOnYou} document${stats.waitingOnYou !== 1 ? 's' : ''} need your signature. Everything else is moving on its own.`
                 : 'Nothing needs your signature right now.'}
             </p>
+            {data.turnaroundStats && (
+              <div className="flex flex-wrap items-center gap-3 mt-4">
+                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 shadow-sm">
+                  <Clock className="h-4 w-4 text-slate-500" />
+                  <span className="font-medium">Avg Turnaround: </span>
+                  <span className="font-bold text-slate-900">{formatTimeHuman(data.turnaroundStats.avgTurnaroundHours)}</span>
+                </div>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 shadow-sm">
+                  <Trophy className="h-4 w-4 text-amber-500" />
+                  <span className="font-medium">Rank: </span>
+                  <span className="font-bold text-amber-900">#{data.turnaroundStats.position}</span>
+                  <span className="text-amber-600/80 text-xs font-medium ml-0.5">of {data.turnaroundStats.totalSigners}</span>
+                </div>
+              </div>
+            )}
           </div>
           <button
             onClick={() => navigate('/upload')}
