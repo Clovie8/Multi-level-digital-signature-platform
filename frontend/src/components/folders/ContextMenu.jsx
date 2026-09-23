@@ -91,7 +91,7 @@ export default function ContextMenu({ x, y, item, onClose, onAction }) {
         </>
       )}
       
-      {role === 'manager' && (
+      {role === 'manager' && item.type !== 'document' && (
         <>
           <div className="border-t border-slate-100 my-1"></div>
           

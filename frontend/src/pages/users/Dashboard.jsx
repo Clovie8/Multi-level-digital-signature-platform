@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { PieChart, Pie, Cell, BarChart, Bar, ResponsiveContainer, XAxis } from 'recharts';
+import { PieChart, Pie, Cell, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import api from '../../lib/api';
 import { Plus, Loader2, ChevronRight, PenTool } from 'lucide-react';
 
@@ -66,6 +66,10 @@ export default function Dashboard() {
     value,
     color: STATUS_COLORS[key]
   }));
+
+  const maxDocs = Math.max(...completedPerWeek.map(d => d.value), 0);
+  // Add +2 to length to include a padding tick above the maximum value (e.g. if max is 3, show up to 4)
+  const yTicks = maxDocs <= 10 && maxDocs > 0 ? Array.from({ length: maxDocs + 2 }, (_, i) => i) : undefined;
 
   return (
     <div className="min-h-full bg-white">
@@ -136,8 +140,27 @@ export default function Dashboard() {
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
             <h2 className="text-sm font-semibold text-slate-900 mb-4">Completed per week</h2>
             <ResponsiveContainer width="100%" height={150}>
-              <BarChart data={completedPerWeek} barCategoryGap="30%">
-                <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} />
+              <BarChart data={completedPerWeek} barCategoryGap="30%" margin={{ top: 10, right: 10, left: 10, bottom: 15 }}>
+                <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="#cbd5e1" opacity={0.5} />
+                <XAxis 
+                  dataKey="week" 
+                  axisLine={{ stroke: '#cbd5e1', strokeWidth: 1.5 }} 
+                  tickLine={false} 
+                  tick={{ fontSize: 11, fill: '#475569', fontWeight: 500 }} 
+                  label={{ value: 'Weeks', position: 'insideBottom', offset: -10, fontSize: 11, fill: '#64748b', fontWeight: 600 }}
+                />
+                <YAxis 
+                  allowDecimals={false} 
+                  axisLine={{ stroke: '#cbd5e1', strokeWidth: 1.5 }} 
+                  tickLine={false} 
+                  tick={{ fontSize: 11, fill: '#475569', fontWeight: 500 }} 
+                  width={35}
+                  ticks={yTicks}
+                  interval={0}
+                  domain={[0, maxDocs === 0 ? 1 : (maxDocs <= 10 ? maxDocs + 1 : 'auto')]}
+                  label={{ value: 'Docs', angle: -90, position: 'insideLeft', offset: -5, fontSize: 11, fill: '#64748b', fontWeight: 600 }}
+                />
+                <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', fontSize: '12px' }} />
                 <Bar dataKey="value" radius={[3, 3, 0, 0]} fill="#0f172a" />
               </BarChart>
             </ResponsiveContainer>
@@ -207,7 +230,11 @@ export default function Dashboard() {
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-slate-900">Documents in progress</h2>
-            <button onClick={() => navigate('/documents')} className="text-xs font-semibold text-slate-500 hover:text-slate-900 transition-colors flex items-center">
+            <button 
+              onClick={() => navigate('/documents')} 
+              disabled={documentsInProgress.length === 0}
+              className={`text-xs font-semibold flex items-center transition-colors ${documentsInProgress.length === 0 ? 'text-slate-300 cursor-not-allowed' : 'text-slate-500 hover:text-slate-900'}`}
+            >
               View all <ChevronRight className="h-3.5 w-3.5 ml-0.5" />
             </button>
           </div>

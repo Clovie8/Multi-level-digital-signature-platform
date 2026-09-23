@@ -3,7 +3,7 @@ import { X, Folder, Loader2, ChevronLeft, ChevronRight, Plus } from 'lucide-reac
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 
-export default function MoveModal({ isOpen, onClose, selectedItems, currentFolderId, onMoveSuccess }) {
+export default function MoveModal({ isOpen, onClose, selectedItems, currentFolderId, activeTab, onMoveSuccess }) {
   const [isMoving, setIsMoving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [allFolders, setAllFolders] = useState([]);
@@ -46,11 +46,32 @@ export default function MoveModal({ isOpen, onClose, selectedItems, currentFolde
     try {
       // Use the new bulk API endpoint
       const itemsToMove = selectedItems.map(i => ({ id: i.id, type: i.type }));
-      await api.put('/api/folders/move-bulk', {
+      const res = await api.put('/api/folders/move-bulk', {
         items: itemsToMove,
         destinationFolderId: currentViewId
       });
-      toast.success(`Successfully moved ${selectedItems.length} item(s)`);
+      
+      const results = res.data.results || [];
+      const failures = results.filter(r => !r.success);
+      
+      if (failures.length > 0) {
+        const code = failures[0].error;
+        let msg = code || 'Failed to move item(s)';
+        if (code === 'NO_WRITE_ACCESS_DESTINATION') msg = 'You do not have privileges to move items into this folder.';
+        if (code === 'NO_WRITE_ACCESS_SOURCE') msg = 'You do not have privileges to move items out of their current folder.';
+        if (code === 'NOT_OWNER') msg = 'You do not have privileges to move this item.';
+        if (code === 'CIRCULAR_DEPENDENCY') msg = 'You cannot move a folder into its own subfolder.';
+        if (code === 'CANNOT_MOVE_TO_ROOT') msg = 'You cannot move a shared item to your root space.';
+        if (code === 'CANNOT_MOVE_OUT_OF_SHARED_SPACE') msg = 'You cannot move a shared item out of its shared folder hierarchy.';
+        toast.error(msg);
+        
+        if (failures.length < results.length) {
+          toast.success(`Successfully moved ${results.length - failures.length} item(s)`);
+        }
+      } else {
+        toast.success(`Successfully moved ${selectedItems.length} item(s)`);
+      }
+      
       onMoveSuccess();
       onClose();
     } catch (err) {
@@ -60,6 +81,8 @@ export default function MoveModal({ isOpen, onClose, selectedItems, currentFolde
       if (code === 'NO_WRITE_ACCESS_SOURCE') msg = 'You do not have privileges to move items out of their current folder.';
       if (code === 'NOT_OWNER') msg = 'You do not have privileges to move this item.';
       if (code === 'CIRCULAR_DEPENDENCY') msg = 'You cannot move a folder into its own subfolder.';
+      if (code === 'CANNOT_MOVE_TO_ROOT') msg = 'You cannot move a shared item to your root space.';
+      if (code === 'CANNOT_MOVE_OUT_OF_SHARED_SPACE') msg = 'You cannot move a shared item out of its shared folder hierarchy.';
       toast.error(msg);
     } finally {
       setIsMoving(false);
@@ -73,7 +96,8 @@ export default function MoveModal({ isOpen, onClose, selectedItems, currentFolde
     try {
       const res = await api.post('/api/folders', {
         name: newFolderName,
-        parentId: currentViewId
+        parentId: currentViewId,
+        type: activeTab === 'templates' ? 'template' : 'document'
       });
       setAllFolders([...allFolders, res.data.folder]);
       setIsCreatingFolder(false);
@@ -119,7 +143,7 @@ export default function MoveModal({ isOpen, onClose, selectedItems, currentFolde
     getDescendants(id).forEach(d => invalidDestinationIds.add(d.id));
   });
 
-  const visibleFolders = allFolders.filter(f => f.parent_folder_id === currentViewId && !invalidDestinationIds.has(f.id));
+  const visibleFolders = allFolders.filter(f => f.parent_folder_id === currentViewId && !invalidDestinationIds.has(f.id) && f.type === (activeTab === 'templates' ? 'template' : 'document'));
 
   // Cannot move if the destination is exactly where it already is
   const isDestinationSameAsCurrent = currentViewId === currentFolderId;
