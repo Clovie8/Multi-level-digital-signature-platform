@@ -6,7 +6,9 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
-import { FileSignature, RotateCcw, Layers, Ban, Clock, CheckCircle2, AlertTriangle, UploadCloud, X, Plus, Search, Eye, Bell, Download, Pencil, History, MoreVertical, Info, Loader2, LayoutGrid, List, Folder, Trash2, HomeIcon } from 'lucide-react';
+import { formatDistanceToNow, isAfter } from 'date-fns';
+import Select from '../../components/ui/Select';
+import { FileSignature, RotateCcw, Layers, Ban, Clock, CheckCircle2, AlertTriangle, UploadCloud, X, Plus, Search, Eye, Bell, Download, Pencil, History, MoreVertical, Info, Loader2, LayoutGrid, List, Folder, Trash2, HomeIcon, LayoutTemplate, ArrowRight } from 'lucide-react';
 
 const STATUS_META = {
   draft: { label: 'Draft', dot: 'bg-slate-400', text: 'text-slate-600', bg: 'bg-slate-100' },
@@ -947,12 +949,68 @@ function DeclineResolutionPanel({ document, onRefresh }) {
 
 const TABS = [
   { key: 'all', label: 'All documents' },
-  { key: 'sent_by_you', label: 'Documents by you' },
-  { key: 'signed_by_me', label: 'Signed by me' },
+  { key: 'templates', label: 'Templates' },
   { key: 'needs_decision', label: 'Needs your decision' },
 ];
 
 const STATUS_FILTER_OPTIONS = ['all', ...Object.keys(STATUS_META)];
+
+function TemplateTableRow({ template, isChecked, onCheck, onUse, setContextMenu, isUsing }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `template-${template.id}`,
+    data: { type: 'template', item: template }
+  });
+
+  return (
+    <tr ref={setNodeRef} {...attributes} {...listeners} onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, item: { ...template, type: 'template' } }); }} className={`${isDragging ? 'opacity-50' : ''} hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-b-0 transition-colors`}>
+      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+        <input type="checkbox" checked={isChecked} onChange={() => onCheck(template.id)} className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900" />
+      </td>
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+            <LayoutTemplate className="h-4 w-4 text-slate-500" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-slate-900 truncate">{template.name}</p>
+            <p className="text-xs text-slate-400 mt-0.5 truncate">
+              {template.signerCount} signer{template.signerCount !== 1 ? 's' : ''} · Used {template.usageCount}×
+            </p>
+          </div>
+        </div>
+      </td>
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-xs font-semibold text-slate-900 truncate">{template.creatorName || 'Unknown'}</span>
+        </div>
+      </td>
+      <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">
+        {new Date(template.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+      </td>
+      <td className="px-3 py-2 text-xs text-slate-400">—</td>
+      <td className="px-3 py-2 text-xs text-slate-400">—</td>
+      <td className="px-3 py-2">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap bg-purple-50 text-purple-700">Template</span>
+      </td>
+      <td className="px-3 py-2">
+        <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+          {isUsing && <Loader2 className="h-4 w-4 text-slate-400 animate-spin" />}
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const rect = e.currentTarget.getBoundingClientRect();
+              setContextMenu({ x: rect.right - 150, y: rect.bottom, item: { ...template, type: 'template' } });
+            }}
+            className="h-8 w-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+          >
+            <MoreVertical className="h-5 w-5" />
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
 
 
 function FolderTableRow({ folder, isChecked, onCheck, onOpen, setContextMenu }) {
@@ -1013,6 +1071,7 @@ function FolderTableRow({ folder, isChecked, onCheck, onOpen, setContextMenu }) 
 export default function Documents() {
   const navigate = useNavigate();
   const [documents, setDocuments] = useState([]);
+  const [templates, setTemplates] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -1023,6 +1082,9 @@ export default function Documents() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [checkedIds, setCheckedIds] = useState(new Set());
+  const [usingTemplateId, setUsingTemplateId] = useState(null);
+  const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
+  const fileInputRef = useRef(null);
 
   
   
@@ -1195,10 +1257,14 @@ export default function Documents() {
     setCurrentFolderId(folder.id);
   };
 
-  const handleContextMenuAction = (action, item) => {
+  const handleContextMenuAction = async (action, item) => {
     if (action === 'open') {
       if (item.type === 'folder') handleOpenFolder(item);
       else setDetail(item);
+    } else if (action === 'review' && item.type === 'template') {
+      navigate(`/review/${item.id}?model=Template`);
+    } else if (action === 'use' && item.type === 'template') {
+      handleUseTemplate(item);
     } else if (action === 'rename') {
       if (item.type === 'folder') {
         setFolderToRename(item);
@@ -1216,6 +1282,15 @@ export default function Documents() {
     } else if (action === 'delete') {
       if (item.type === 'folder') {
         handleDeleteFolder(item.id);
+      } else if (item.type === 'template') {
+        if (!window.confirm('Are you sure you want to delete this template?')) return;
+        try {
+          await api.delete('/api/templates/' + item.id);
+          setTemplates(prev => prev.filter(t => t.id !== item.id));
+          toast.success('Template deleted');
+        } catch (err) {
+          toast.error(err.response?.data?.error || 'Failed to delete template');
+        }
       } else {
         toast.info('Document deletion coming soon');
       }
@@ -1254,8 +1329,18 @@ export default function Documents() {
       console.error(err);
       toast.error('Could not load your documents.');
       return [];
-    } finally {
-      setIsLoading(false);
+    }
+  }, []);
+
+  const fetchTemplates = useCallback(async () => {
+    try {
+      const res = await api.get('/api/templates');
+      setTemplates(res.data.templates || []);
+      return res.data.templates;
+    } catch (err) {
+      console.error(err);
+      toast.error('Could not load templates.');
+      return [];
     }
   }, []);
 
@@ -1274,11 +1359,16 @@ export default function Documents() {
 
   useEffect(() => {
     const loadInitialDocuments = async () => {
-      await fetchDocuments();
-    fetchFolders();
+      setIsLoading(true);
+      await Promise.all([
+        fetchDocuments(),
+        fetchTemplates(),
+        fetchFolders()
+      ]);
+      setIsLoading(false);
     };
     loadInitialDocuments();
-  }, [fetchDocuments]);
+  }, [fetchDocuments, fetchTemplates]);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -1304,7 +1394,51 @@ export default function Documents() {
 
   const handleRefresh = async () => {
     await fetchDocuments();
+    await fetchTemplates();
     if (selectedId) fetchDetail(selectedId);
+  };
+
+  const handleUseTemplate = async (template) => {
+    setUsingTemplateId(template.id);
+    try {
+      const res = await api.post(`/api/templates/${template.id}/use`);
+      const { document: newDoc } = res.data;
+      toast.success(`Started from "${template.name}".`);
+      navigate(`/upload?edit=${newDoc.id}`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not start a document from this template.');
+    } finally {
+      setUsingTemplateId(null);
+    }
+  };
+
+  const handleUploadTemplate = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== 'application/pdf') {
+      toast.error('Only PDF files are allowed.');
+      return;
+    }
+
+    setIsUploadingTemplate(true);
+    const formData = new FormData();
+    formData.append('pdf_file', file);
+
+    try {
+      await api.post('/api/templates/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      toast.success('Template uploaded successfully.');
+      await fetchTemplates();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to upload template.');
+    } finally {
+      setIsUploadingTemplate(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''; 
+      }
+    }
   };
 
   const currentFolderDocs = useMemo(() => {
@@ -1315,24 +1449,22 @@ export default function Documents() {
     });
   }, [documents, currentFolderId]);
 
+  const currentFolderTemplates = useMemo(() => {
+    return templates.filter(t => {
+      const tFolderId = t.folder_id || t.folderId;
+      if (currentFolderId) return tFolderId === currentFolderId;
+      return !tFolderId;
+    });
+  }, [templates, currentFolderId]);
+
   const needsDecisionCount = useMemo(
     () => currentFolderDocs.filter((d) => d.status === 'declined' || d.status === 'pending_review').length,
     [currentFolderDocs]
   );
 
-  const signedByMeCount = useMemo(
-    () => currentFolderDocs.filter((d) => d.hasSigned).length,
-    [currentFolderDocs]
-  );
-
-  const sentByYouCount = useMemo(
-    () => currentFolderDocs.filter((d) => !d.initiatorId || d.initiatorId === currentUser?.id).length,
-    [currentFolderDocs, currentUser]
-  );
-
   const filteredDocuments = useMemo(() => {
+    if (activeTab === 'templates') return []; // Handled separately
     return documents.filter((d) => {
-      // 1. Check folder matching
       const docFolderId = d.folder_id || d.folderId;
       if (currentFolderId) {
         if (docFolderId !== currentFolderId) return false;
@@ -1340,22 +1472,39 @@ export default function Documents() {
         if (docFolderId) return false;
       }
       
-      // 2. Check other filters
       if (activeTab === 'needs_decision' && !['declined', 'pending_review'].includes(d.status)) return false;
-      if (activeTab === 'sent_by_you' && d.initiatorId && d.initiatorId !== currentUser?.id) return false;
       if (statusFilter !== 'all' && d.status !== statusFilter) return false;
       if (searchQuery && !d.fileName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-      if (activeTab === 'signed_by_me' && !d.hasSigned) return false;
       return true;
     });
   }, [documents, activeTab, statusFilter, searchQuery, currentUser, currentFolderId]);
 
+  const filteredTemplates = useMemo(() => {
+    if (activeTab !== 'templates') return [];
+    return templates.filter((t) => {
+      const tFolderId = t.folder_id || t.folderId;
+      if (currentFolderId) {
+        if (tFolderId !== currentFolderId) return false;
+      } else {
+        if (tFolderId) return false;
+      }
+      
+      if (searchQuery && !t.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      return true;
+    });
+  }, [templates, activeTab, searchQuery, currentFolderId]);
+
   const paginatedDocuments = useMemo(() => {
-  const startIndex = (currentPage - 1) * itemsPerPage;
+    const startIndex = (currentPage - 1) * itemsPerPage;
     return filteredDocuments.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredDocuments, currentPage, itemsPerPage]);
 
-  const totalPages = Math.ceil(filteredDocuments.length / itemsPerPage);
+  const paginatedTemplates = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredTemplates.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredTemplates, currentPage, itemsPerPage]);
+
+  const totalPages = Math.ceil((activeTab === 'templates' ? filteredTemplates.length : filteredDocuments.length) / itemsPerPage);
 
 
   const toggleCheck = (id) => {
@@ -1367,8 +1516,9 @@ export default function Documents() {
   };
 
   const toggleCheckAll = () => {
+    const currentList = activeTab === 'templates' ? filteredTemplates : filteredDocuments;
     setCheckedIds((prev) =>
-      prev.size === filteredDocuments.length ? new Set() : new Set(filteredDocuments.map((d) => d.id))
+      prev.size === currentList.length ? new Set() : new Set(currentList.map((d) => d.id))
     );
   };
 
@@ -1411,23 +1561,42 @@ export default function Documents() {
               Everything you've sent for signature — including declines, resumes, and revisions.
             </p>
           </div>
-          <button
-            onClick={() => navigate('/upload')}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 text-white text-sm font-semibold rounded-md hover:bg-slate-800 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            New document
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate('/upload')}
+              className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 text-white text-sm font-semibold rounded-md hover:bg-slate-800 transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              New document
+            </button>
+            {activeTab === 'templates' && (
+              <>
+                <input 
+                  type="file" 
+                  accept="application/pdf" 
+                  hidden 
+                  ref={fileInputRef} 
+                  onChange={handleUploadTemplate} 
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploadingTemplate}
+                  className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-100 text-slate-700 text-sm font-semibold rounded-md hover:bg-slate-200 transition-colors disabled:opacity-50"
+                >
+                  <UploadCloud className="h-4 w-4" />
+                  {isUploadingTemplate ? 'Uploading...' : 'Upload Template'}
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         <div className="flex gap-6 border-b border-slate-200 mb-5">
           {TABS.map((tab) => {
             const count = tab.key === 'all'
               ? currentFolderDocs.length
-              : tab.key === 'sent_by_you'
-                ? sentByYouCount
-                : tab.key === 'signed_by_me'
-                ? signedByMeCount
+              : tab.key === 'templates'
+                ? currentFolderTemplates.length
                 : needsDecisionCount;
             const isActive = activeTab === tab.key;
             return (
@@ -1479,17 +1648,17 @@ export default function Documents() {
               className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900"
             />
           </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="text-sm font-medium text-slate-700 border border-slate-200 rounded-md py-2 px-3 focus:ring-slate-900 focus:border-slate-900"
-          >
-            {STATUS_FILTER_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {s === 'all' ? 'Status: All' : STATUS_META[s].label}
-              </option>
-            ))}
-          </select>
+          {activeTab !== 'templates' && (
+            <Select
+              value={statusFilter}
+              onChange={(val) => setStatusFilter(val)}
+              options={STATUS_FILTER_OPTIONS.map((s) => ({
+                value: s,
+                label: s === 'all' ? 'Status: All' : STATUS_META[s].label
+              }))}
+              className="w-48"
+            />
+          )}
         </div>
 
         {checkedIds.size > 0 && (
@@ -1516,16 +1685,16 @@ export default function Documents() {
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-16 text-slate-400">
               <Clock className="h-6 w-6 mb-2 animate-pulse" />
-              <p className="text-sm">Loading documents…</p>
+              <p className="text-sm">Loading…</p>
             </div>
-          ) : filteredDocuments.length === 0 && currentLevelFolders.length === 0 ? (
+          ) : (filteredDocuments.length === 0 && filteredTemplates.length === 0) && currentLevelFolders.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center px-6">
               <FileSignature className="h-10 w-10 text-slate-300 mb-3" />
-              <h2 className="text-sm font-semibold text-slate-900">No documents found</h2>
+              <h2 className="text-sm font-semibold text-slate-900">
+                {activeTab === 'templates' ? 'No templates found' : 'No documents found'}
+              </h2>
               <p className="text-xs text-slate-500 mt-1 max-w-sm">
-                {documents.length === 0
-                  ? 'Documents you send for signature will show up here.'
-                  : 'Try a different search or filter.'}
+                Try a different search or filter.
               </p>
             </div>
           ) : (
@@ -1547,12 +1716,12 @@ export default function Documents() {
                     <th className="px-3 py-1.5">
                       <input
                         type="checkbox"
-                        checked={checkedIds.size > 0 && checkedIds.size === filteredDocuments.length}
+                        checked={checkedIds.size > 0 && checkedIds.size === (activeTab === 'templates' ? filteredTemplates.length : filteredDocuments.length)}
                         onChange={toggleCheckAll}
                         className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
                       />
                     </th>
-                    <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Document</th>
+                    <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">{activeTab === 'templates' ? 'Template' : 'Document'}</th>
                     <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Initiator</th>
                     <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Date</th>
                     <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Progress</th>
@@ -1574,19 +1743,33 @@ export default function Documents() {
                       />
                     ))}
 
-                    {paginatedDocuments.map((document) => (
-                    <DocumentTableRow
-                      key={document.id}
-                      document={document}
-                      currentUser={currentUser}
-                      isChecked={checkedIds.has(document.id)}
-                      onCheck={toggleCheck}
-                      onOpen={handleSelect}
-                      onVoided={handleRefresh}
-                      setContextMenu={setContextMenu}
-                      onContextMenuAction={handleContextMenuAction}
-                    />
-                  ))}
+                    {activeTab === 'templates' ? (
+                      paginatedTemplates.map((template) => (
+                        <TemplateTableRow
+                          key={template.id}
+                          template={template}
+                          isChecked={checkedIds.has(template.id)}
+                          onCheck={toggleCheck}
+                          onUse={handleUseTemplate}
+                          setContextMenu={setContextMenu}
+                          isUsing={usingTemplateId === template.id}
+                        />
+                      ))
+                    ) : (
+                      paginatedDocuments.map((document) => (
+                        <DocumentTableRow
+                          key={document.id}
+                          document={document}
+                          currentUser={currentUser}
+                          isChecked={checkedIds.has(document.id)}
+                          onCheck={toggleCheck}
+                          onOpen={handleSelect}
+                          onVoided={handleRefresh}
+                          setContextMenu={setContextMenu}
+                          onContextMenuAction={handleContextMenuAction}
+                        />
+                      ))
+                    )}
                 </tbody>
               </table>
             </div>
@@ -1594,18 +1777,19 @@ export default function Documents() {
             <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-slate-500">Show</span>
-                <select
+                <Select
                   value={itemsPerPage}
-                  onChange={(e) => {
-                    setItemsPerPage(Number(e.target.value));
+                  onChange={(val) => {
+                    setItemsPerPage(Number(val));
                     setCurrentPage(1);
                   }}
-                  className="text-sm font-medium text-slate-700 border border-slate-200 rounded-md py-1 px-2 focus:ring-slate-900 focus:border-slate-900 outline-none cursor-pointer"
-                >
-                  <option value={10}>10</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
-                </select>
+                  options={[
+                    { value: 10, label: '10' },
+                    { value: 50, label: '50' },
+                    { value: 100, label: '100' }
+                  ]}
+                  className="w-20"
+                />
                 <span className="text-sm text-slate-500">entries</span>
               </div>
               <div className="flex items-center gap-2">

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, useNavigate, useLocation, useOutletContext, Link } from 'react-router-dom';
-import { PenTool, Menu, X, Home, FileSignature, Settings, LogOut, User, ChevronDown, ChevronLeft, ChevronRight, UploadCloud, ShieldCheck, ScrollText } from 'lucide-react';
+import { PenTool, Menu, X, Home, FileSignature, Settings, LogOut, User, ChevronDown, ChevronLeft, ChevronRight, UploadCloud, ShieldCheck, ScrollText, FolderOpen } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
 
@@ -89,8 +89,9 @@ export default function Layout() {
       { name: 'Admin Dashboard', href: '/admin', icon: ShieldCheck },
     ] : []),
     ...(user?.role !== 'admin' ? [{ name: 'Dashboard', href: '/', icon: Home }] : []),
-    { name: 'Documents', href: '/documents', icon: FileSignature },
+    { name: 'Documents', href: '/documents', icon: FolderOpen },
     { name: 'Upload', href: '/upload', icon: UploadCloud },
+    { name: 'Templates', href: '/folder', icon: FileSignature },
     { name: 'Settings', href: '/Settings', icon: Settings },
     ...(user?.role === 'admin' ? [{ name: 'Audit Logs', href: '/admin/audit-logs', icon: ScrollText }] : []),
   ];

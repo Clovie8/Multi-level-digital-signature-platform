@@ -508,7 +508,7 @@ export default function AdminDashboard() {
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">Admin</p>
             <h1 className="text-2xl font-semibold text-slate-900">System Admin dashboard</h1>
             <p className="text-sm text-slate-500 mt-1">
-              Signed in as {user?.name || user?.email} — users and access control.
+              Signed in as {user?.name || user?.email}
             </p>
           </div>
         </div>
