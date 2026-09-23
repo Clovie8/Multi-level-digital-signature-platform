@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, useNavigate, useLocation, useOutletContext, Link } from 'react-router-dom';
-import { PenTool, Menu, X, Home, FileSignature, Settings, LogOut, User, ChevronDown, ChevronLeft, ChevronRight, UploadCloud, ShieldCheck, ScrollText, FolderOpen } from 'lucide-react';
+import { PenTool, Menu, X, Home, FileSignature, Settings, LogOut, User, ChevronDown, ChevronLeft, ChevronRight, UploadCloud, ShieldCheck, ScrollText, FolderOpen, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
 
@@ -97,6 +97,7 @@ export default function Layout() {
     { name: 'Templates', href: '/folder', icon: FileSignature },
     { name: 'Profile Settings', href: '/Settings', icon: Settings },
     ...(user?.role === 'admin' ? [{ name: 'Audit Logs', href: '/admin/audit-logs', icon: ScrollText }] : []),
+    ...(user?.role === 'admin' ? [{ name: 'Turnaround Audit', href: '/admin/turnaround', icon: Clock }] : []),
   ];
   // Dynamically set the Header Title based on the current URL route
   const getPageTitle = () => {
