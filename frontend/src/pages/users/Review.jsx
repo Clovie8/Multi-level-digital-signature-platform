@@ -136,6 +136,41 @@ export default function Review() {
     loadReviewFile();
   }, [id, navigate, isPreview, isResume, isTemplate]);
 
+  // Continuous Scroll Functions
+  const handleScroll = (e) => {
+    const container = e.target;
+    const scrollPosition = container.scrollTop;
+    
+    let bestPage = 1;
+    let minDistance = Infinity;
+
+    for (let i = 1; i <= totalPages; i++) {
+      const pageEl = document.getElementById(`review-page-${i}`);
+      if (pageEl) {
+        const distance = Math.abs(pageEl.offsetTop - scrollPosition);
+        if (distance < minDistance) {
+          minDistance = distance;
+          bestPage = i;
+        }
+      }
+    }
+
+    if (bestPage !== currentPage) {
+      setCurrentPage(bestPage);
+    }
+  };
+
+  const scrollToPage = (pageNum) => {
+    if (pageNum < 1 || pageNum > totalPages) return;
+    
+    const pageEl = document.getElementById(`review-page-${pageNum}`);
+    if (pageEl) {
+      pageEl.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      setCurrentPage(pageNum);
+    }
+  };
+
   const handleApprove = async () => {
     setShowConfirm(false);
     setIsApproving(true);
@@ -172,11 +207,11 @@ export default function Review() {
         </button>
 
         <div className="flex items-center gap-2">
-          <button onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))} disabled={currentPage <= 1} className="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors disabled:opacity-50">
+          <button onClick={() => scrollToPage(Math.max(currentPage - 1, 1))} disabled={currentPage <= 1} className="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors disabled:opacity-50">
             <ChevronLeft className="h-5 w-5" />
           </button>
           <span className="text-sm font-medium text-slate-600">Page {currentPage} of {totalPages}</span>
-          <button onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))} disabled={currentPage >= totalPages} className="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors disabled:opacity-50">
+          <button onClick={() => scrollToPage(Math.min(currentPage + 1, totalPages))} disabled={currentPage >= totalPages} className="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors disabled:opacity-50">
             <ChevronRight className="h-5 w-5" />
           </button>
         </div>
@@ -244,7 +279,7 @@ export default function Review() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-8 flex justify-center">
+      <div className="flex-1 overflow-auto p-8 flex justify-center" onScroll={handleScroll}>
         {isLoading ? (
           <div className="text-slate-400 text-sm py-20">Loading document…</div>
         ) : (
@@ -260,28 +295,45 @@ export default function Review() {
             }
             error={<div className="p-20 text-red-500">Failed to load PDF.</div>}
           >
-            <div className="relative">
-              <Page pageNumber={currentPage} width={750} renderTextLayer={false} renderAnnotationLayer={false} className="shadow-lg" />
-              
-              {/* Overlay Pending Signature Fields */}
-              {pendingFields.filter(f => f.page === currentPage).map((field, idx) => (
-                <div
-                  key={`pending-field-${idx}`}
-                  style={{
-                    position: 'absolute',
-                    left: `${field.x || 0}px`,
-                    top: `${field.y || 0}px`,
-                    width: `${field.width || 120}px`,
-                    height: `${field.height || 40}px`,
-                  }}
-                  className="border-2 border-dashed border-amber-500 bg-amber-100/40 rounded flex items-center justify-center pointer-events-none z-10"
-                >
-                  <div className="flex flex-col text-center opacity-90 overflow-hidden w-full px-1">
-                    <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider truncate">{field.type}</span>
-                    <span className="text-[9px] font-medium text-amber-600 truncate max-w-full">{field.signerName}</span>
+            <div className="w-[750px] flex flex-col">
+              {Array.from(new Array(totalPages), (el, index) => {
+                const pageIndex = index + 1;
+                return (
+                  <div 
+                    key={`review-page-${pageIndex}`} 
+                    id={`review-page-${pageIndex}`} 
+                    className="relative bg-white shadow-xl mb-6 last:mb-0 aspect-[8.5/11]"
+                  >
+                    <Page 
+                      pageNumber={pageIndex} 
+                      width={750} 
+                      renderTextLayer={false} 
+                      renderAnnotationLayer={false} 
+                      loading={<div className="w-[750px] aspect-[8.5/11] bg-slate-50 animate-pulse flex items-center justify-center text-slate-400">Loading page {pageIndex}...</div>}
+                    />
+                    
+                    {/* Overlay Pending Signature Fields */}
+                    {pendingFields.filter(f => f.page === pageIndex).map((field, idx) => (
+                      <div
+                        key={`pending-field-${idx}`}
+                        style={{
+                          position: 'absolute',
+                          left: `${field.x || 0}px`,
+                          top: `${field.y || 0}px`,
+                          width: `${field.width || 120}px`,
+                          height: `${field.height || 40}px`,
+                        }}
+                        className="border-2 border-dashed border-amber-500 bg-amber-100/40 rounded flex items-center justify-center pointer-events-none z-10"
+                      >
+                        <div className="flex flex-col text-center opacity-90 overflow-hidden w-full px-1">
+                          <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider truncate">{field.type}</span>
+                          <span className="text-[9px] font-medium text-amber-600 truncate max-w-full">{field.signerName}</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </Document>
         )}

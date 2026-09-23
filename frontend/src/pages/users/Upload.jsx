@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import {
   UploadCloud, Users, FileSignature, CheckCircle, Plus, Trash2,
-  ArrowRight, PenTool, Calendar, Type, UserSquare, ChevronLeft, ChevronRight, Search, Send, X, LayoutTemplate
+  ArrowRight, PenTool, Calendar, Type, UserSquare, ChevronLeft, ChevronRight, Search, Send, X, LayoutTemplate, Pencil, Check
 } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Rnd } from 'react-rnd';
@@ -37,10 +37,10 @@ const DraggableField = ({ icon: Icon, label, type, activeColorClasses, onDragSta
   <div
     draggable
     onDragStart={(e) => onDragStart(e, type)}
-    className={`flex items-center p-2 mb-2 bg-white border-l-4 ${activeColorClasses.split(' ')[2].replace('-200', '-500')} rounded shadow-sm cursor-grab hover:shadow transition-all`}
+    className={`flex items-center p-2 bg-white border border-slate-100 border-l-2 ${activeColorClasses.split(' ')[2].replace('-200', '-500')} rounded-md shadow-sm cursor-grab hover:shadow hover:border-slate-200 transition-all`}
   >
-    <Icon className={`h-3.5 w-3.5 mr-2 ${activeColorClasses.split(' ')[1].replace('-700', '-600')}`} />
-    <span className="text-xs font-medium text-slate-700">{label}</span>
+    <Icon className={`h-3.5 w-3.5 mr-1.5 shrink-0 ${activeColorClasses.split(' ')[1].replace('-700', '-600')}`} />
+    <span className="text-[12px] font-medium text-slate-700 truncate">{label}</span>
   </div>
 );
 
@@ -110,6 +110,7 @@ export default function Upload() {
   const [signers, setSigners] = useState([
     { id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200', receivesFinalCopy: true }
   ]);
+  const [editingSignerId, setEditingSignerId] = useState(1);
 
   const [userSuggestions, setUserSuggestions] = useState([]);
   const [activeSearchIndex, setActiveSearchIndex] = useState(null);
@@ -120,6 +121,28 @@ export default function Upload() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [fields, setFields] = useState([]);
+
+  // Responsive Canvas Scaling
+  const pdfContainerRef = useRef(null);
+  const [pdfScale, setPdfScale] = useState(1);
+
+  useEffect(() => {
+    if (currentStep !== 2) return;
+    const observer = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        const availableWidth = entry.contentRect.width;
+        // The base width is 750. We reserve 64px for padding (p-8 = 32px * 2)
+        const targetScale = Math.min(1, (availableWidth - 64) / 750);
+        setPdfScale(Math.max(0.3, targetScale)); 
+      }
+    });
+    
+    if (pdfContainerRef.current) {
+      observer.observe(pdfContainerRef.current);
+    }
+    
+    return () => observer.disconnect();
+  }, [currentStep]);
 
   useEffect(() => {
     if (!editDocumentId) return;
@@ -208,6 +231,33 @@ export default function Upload() {
   const onDocumentLoadSuccess = ({ numPages }) => {
     setTotalPages(numPages);
     setCurrentPage(1);
+  };
+
+  const scrollToPage = (pageNum) => {
+    const element = document.getElementById(`pdf-dropzone-${pageNum}`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setCurrentPage(pageNum);
+    }
+  };
+
+  const handleScroll = (e) => {
+    if (totalPages <= 1) return;
+    const container = e.target;
+    const containerRect = container.getBoundingClientRect();
+    
+    for (let i = 1; i <= totalPages; i++) {
+      const el = document.getElementById(`pdf-dropzone-${i}`);
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        const visibleHeight = Math.max(0, Math.min(rect.bottom, containerRect.bottom) - Math.max(rect.top, containerRect.top));
+        // If more than 30% of the page is visible or 300px
+        if (visibleHeight > (rect.height * 0.3) || visibleHeight > 300) {
+          if (currentPage !== i) setCurrentPage(i);
+          break;
+        }
+      }
+    }
   };
 
 
@@ -328,14 +378,16 @@ export default function Upload() {
   const addSigner = () => {
     if (signers.length >= 5) return toast.error('Maximum 5 signers allowed for standard routing.');
     const newIndex = signers.length;
+    const newId = newIndex + 1;
     setSigners([...signers, {
-      id: newIndex + 1,
+      id: newId,
       name: '',
       email: '',
-      role: `Level ${newIndex + 1} Signer`,
+      role: `Level ${newId} Signer`,
       color: signerColors[newIndex],
       receivesFinalCopy: true
     }]);
+    setEditingSignerId(newId);
   };
 
   const removeSigner = (indexToRemove) => {
@@ -356,36 +408,42 @@ export default function Upload() {
     setSigners(updatedSigners);
   };
 
-  const handleHierarchySubmit = () => {
+  const validateSigners = () => {
     const isValid = signers.every(s => s.name.trim() !== '' && s.email.trim() !== '');
-    if (!isValid) return toast.error('Please fill out all signer details.');
+    if (!isValid) {
+      toast.error('Please fill out all signer details.');
+      return false;
+    }
 
     // Check for duplicate emails (case-insensitive)
     const emails = signers.map(s => s.email.trim().toLowerCase());
     const uniqueEmails = new Set(emails);
     if (uniqueEmails.size !== emails.length) {
-      return toast.error('Duplicate emails found. Each signer must have a unique email address.');
+      toast.error('Duplicate emails found. Each signer must have a unique email address.');
+      return false;
     }
 
     // Email validation
     const invalidEmail = emails.find(email => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
     if (invalidEmail) {
-      return toast.error(`Invalid email address: ${invalidEmail}`);
+      toast.error(`Invalid email address: ${invalidEmail}`);
+      return false;
     }
 
     // Check for duplicate names (case-insensitive)
     const names = signers.map(s => s.name.trim().toLowerCase());
     const uniqueNames = new Set(names);
     if (uniqueNames.size !== names.length) {
-      return toast.error('Duplicate names found. Each signer must have a unique name.');
+      toast.error('Duplicate names found. Each signer must have a unique name.');
+      return false;
     }
 
-    // Set the first signer active for the tagging canvas
-    setActiveSignerId(signers[0].id);
-    setCurrentStep(3);
+    return true;
   };
 
   const handleSaveAsDraft = async () => {
+    if (!validateSigners()) return;
+
     setIsLoading(true);
     try {
       const finalSigners = signers.map((s, idx) => {
@@ -417,6 +475,8 @@ export default function Upload() {
     if (saveAsTemplate && !templateName.trim()) {
       return toast.error('Please give your template a name.');
     }
+
+    if (!validateSigners()) return;
 
     setIsLoading(true);
 
@@ -486,7 +546,7 @@ export default function Upload() {
     e.preventDefault(); // Necessary to allow dropping
   };
 
-  const handleDrop = (e) => {
+  const handleDrop = (e, pageIndex) => {
     e.preventDefault();
     const fieldType = e.dataTransfer.getData('fieldType');
     if (!fieldType) return;
@@ -501,7 +561,9 @@ export default function Upload() {
         return;
       }
       
-      const bounds = e.currentTarget.getBoundingClientRect();
+      const dropzone = document.getElementById(`pdf-dropzone-${pageIndex}`);
+      if (!dropzone) return;
+      const bounds = dropzone.getBoundingClientRect();
       const x = e.clientX - bounds.left;
       const y = e.clientY - bounds.top;
       const xPct = (x / bounds.width) * 100;
@@ -525,13 +587,14 @@ export default function Upload() {
       }
       setFields([...fields, ...newFields]);
       
-      const currentField = newFields.find(f => f.page === currentPage);
-        if (currentField) setSelectedFieldId(currentField.id);
-        toast.success('Initial placed on all pages.');
-      } else {
+      const currentField = newFields.find(f => f.page === pageIndex);
+      if (currentField) setSelectedFieldId(currentField.id);
+      toast.success('Initial placed on all pages.');
+    } else {
 
-      // Calculate drop coordinates relative to the PDF container
-      const bounds = e.currentTarget.getBoundingClientRect();
+      const dropzone = document.getElementById(`pdf-dropzone-${pageIndex}`);
+      if (!dropzone) return;
+      const bounds = dropzone.getBoundingClientRect();
       const x = e.clientX - bounds.left;
       const y = e.clientY - bounds.top;
 
@@ -542,7 +605,7 @@ export default function Upload() {
         id: `field_${Date.now()}`,
         type: fieldType,
         signerId: activeSignerId,
-        page: currentPage,
+        page: pageIndex,
         x: x,
         y: y,
         xPct: xPct,
@@ -553,20 +616,21 @@ export default function Upload() {
       };
 
       setFields([...fields, newField]);
-      setSelectedFieldId(newField.id); // Auto-select new field
+      setSelectedFieldId(newField.id); 
     }
-
   };
 
   const updateFieldPosition = (id, newX, newY) => {
-    const dropzone = document.getElementById('pdf-dropzone');
+    const targetField = fields.find(f => f.id === id);
+    if (!targetField) return;
+
+    const dropzone = document.getElementById(`pdf-dropzone-${targetField.page}`);
     if (!dropzone) return;
     const bounds = dropzone.getBoundingClientRect();
     const xPct = (newX / bounds.width) * 100;
     const yPct = (newY / bounds.height) * 100;
 
-    const targetField = fields.find(f => f.id === id);
-    if (targetField && targetField.type === 'Initial') {
+    if (targetField.type === 'Initial') {
       setFields(prev => prev.map(f => (f.type === 'Initial' && f.signerId === targetField.signerId) ? { ...f, x: newX, y: newY, xPct: xPct, yPct: yPct } : f));
     } else {
       setFields(prev => prev.map(f => f.id === id ? { ...f, x: newX, y: newY, xPct: xPct, yPct: yPct } : f));
@@ -607,16 +671,7 @@ export default function Upload() {
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] font-sans pb-12">
-      <main className={`mx-auto mt-8 px-4 sm:px-6 transition-all duration-500 ${currentStep === 3 ? 'max-w-6xl' : 'max-w-4xl'}`}>
-
-        {/* Stepper Navigation */}
-        <div className="flex justify-center items-center space-x-8 sm:space-x-16 mb-10">
-          <StepIcon stepNumber={1} current={currentStep} icon={UploadCloud} title="Upload PDF" />
-          <div className="h-px w-12 sm:w-24 bg-slate-200 mb-6"></div>
-          <StepIcon stepNumber={2} current={currentStep} icon={Users} title="Set Hierarchy" />
-          <div className="h-px w-12 sm:w-24 bg-slate-200 mb-6"></div>
-          <StepIcon stepNumber={3} current={currentStep} icon={FileSignature} title="Tag Document" />
-        </div>
+      <main className={`mx-auto mt-8 px-4 sm:px-6 transition-all duration-500 ${currentStep === 2 ? 'w-full max-w-[1400px]' : 'max-w-4xl'}`}>
 
         {/* STEP 1 UI: UPLOAD */}
         {currentStep === 1 && (
@@ -764,158 +819,166 @@ export default function Upload() {
           </div>
         )}
 
-        {/* STEP 2 UI: HIERARCHY */}
+
+
+        {/* STEP 2 UI: THE CANVAS WORKSPACE & ROUTING */}
         {currentStep === 2 && (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 animate-in fade-in slide-in-from-right-4 duration-500">
-            <h2 className="text-2xl font-semibold text-slate-900 mb-2">Define Routing Hierarchy</h2>
-            <p className="text-slate-500 text-sm mb-6">Who needs to sign this document? The system will route it sequentially from Level 1 downwards.</p>
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-row h-[calc(100vh-8rem)] min-h-[600px] animate-in fade-in slide-in-from-right-4 duration-500">
 
-            <div className="mb-4 bg-slate-50 border border-slate-200 rounded-lg overflow-hidden divide-y divide-slate-200">
-              <div className="p-2.5 flex items-center hover:bg-slate-100/50 transition-colors">
-                <input
-                  type="checkbox"
-                  id="meFirst"
-                  checked={isInitiatorFirst}
-                  onChange={toggleInitiatorFirst}
-                  className="h-4 w-4 text-slate-900 focus:ring-slate-900 border-slate-300 rounded cursor-pointer"
-                />
-                <label htmlFor="meFirst" className="ml-3 block text-sm font-medium text-slate-900 cursor-pointer flex-grow">
-                  I am the first signer
-                </label>
+            {/* Left Sidebar: Routing & Tools */}
+            <div className="w-64 lg:w-72 shrink-0 bg-slate-50 border-r border-slate-200 flex flex-col z-20 shadow-[2px_0_8px_-3px_rgba(0,0,0,0.1)] overflow-y-auto custom-scrollbar">
+
+              {/* Signers & Routing */}
+              <div className="p-2.5 border-b border-slate-200 bg-white">
+                <h3 className="font-semibold text-slate-900 text-sm">Signers & Routing</h3>
+                <p className="text-[10px] text-slate-500 mt-0.5">Configure who needs to sign</p>
               </div>
 
-              <div className="p-2.5 flex items-center hover:bg-slate-100/50 transition-colors">
-                <input
-                  type="checkbox"
-                  id="initiatorFinalCopy"
-                  checked={initiatorReceivesFinalCopy}
-                  onChange={(e) => setInitiatorReceivesFinalCopy(e.target.checked)}
-                  className="h-4 w-4 text-slate-900 focus:ring-slate-900 border-slate-300 rounded cursor-pointer"
-                />
-                <label htmlFor="initiatorFinalCopy" className="ml-3 block text-sm font-medium text-slate-900 cursor-pointer flex-grow">
-                  Send me a copy of the final completed document
-                </label>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {signers.map((signer, index) => (
-                <div key={signer.id} className="flex flex-col sm:flex-row gap-4 p-4 border border-slate-100 bg-white rounded-lg shadow-sm relative">
-                  <div className="w-full sm:w-1/4 flex items-center">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${signer.color}`}>
-                      {signer.role}
-                    </span>
-                  </div>
-                                    <div className="w-full sm:w-1/3 relative">
+              <div className="p-3 space-y-3 border-b border-slate-200">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="p-2 flex items-center bg-white border border-slate-200 rounded-md hover:border-slate-300 hover:bg-slate-50 transition-colors shadow-sm">
                     <input
-                      type="text"
-                      placeholder="Search name or email..."
-                      value={signer.name}
-                      disabled={signer.locked}
-                      onChange={(e) => {
-                        handleSignerChange(index, 'name', e.target.value);
-                        
-                        // Trigger search if they typed at least 2 characters
-                        if (e.target.value.length >= 2) {
-                          setActiveSearchIndex(index);
-                          api.get(`/api/auth/users/search?q=${e.target.value}`)
-                             .then(res => setUserSuggestions(res.data.users))
-                             .catch(err => console.error(err));
-                        } else {
-                          setUserSuggestions([]);
-                        }
-                      }}
-                      // Delay hiding the dropdown so they have time to click a suggestion
-                      onBlur={() => setTimeout(() => setUserSuggestions([]), 200)}
-                      className="block w-full text-sm border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900 disabled:bg-slate-50 disabled:text-slate-500 py-2 px-3 border"
+                      type="checkbox"
+                      id="meFirst"
+                      checked={isInitiatorFirst}
+                      onChange={toggleInitiatorFirst}
+                      className="h-3.5 w-3.5 text-slate-900 focus:ring-slate-900 border-slate-300 rounded cursor-pointer"
                     />
-                    
-                    {/* The Auto-Complete Dropdown */}
-                    {activeSearchIndex === index && userSuggestions.length > 0 && (
-                      <ul className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
-                        {userSuggestions.map(u => (
-                          <li 
-                            key={u.id}
-                            // We use onMouseDown instead of onClick because onBlur fires before onClick
-                            onMouseDown={() => {
-                               handleSignerChange(index, 'name', u.name);
-                               handleSignerChange(index, 'email', u.email);
-                               setUserSuggestions([]);
-                            }}
-                            className="px-3 py-2 text-sm cursor-pointer hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
-                          >
-                            <div className="font-medium text-slate-900">{u.name}</div>
-                            <div className="text-xs text-slate-500">{u.email}</div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                    <label htmlFor="meFirst" className="ml-2 block text-[11px] font-medium text-slate-700 cursor-pointer flex-grow truncate">
+                      I'm first signer
+                    </label>
                   </div>
 
-                  <div className="w-full sm:w-1/3">
+                  <div className="p-2 flex items-center bg-white border border-slate-200 rounded-md hover:border-slate-300 hover:bg-slate-50 transition-colors shadow-sm">
                     <input
-                      type="email"
-                      placeholder="Email Address"
-                      value={signer.email}
-                      disabled={signer.locked}
-                      onChange={(e) => handleSignerChange(index, 'email', e.target.value)}
-                      className="block w-full text-sm border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900 disabled:bg-slate-50 disabled:text-slate-500 py-2 px-3 border"
+                      type="checkbox"
+                      id="initiatorFinalCopy"
+                      checked={initiatorReceivesFinalCopy}
+                      onChange={(e) => setInitiatorReceivesFinalCopy(e.target.checked)}
+                      className="h-3.5 w-3.5 text-slate-900 focus:ring-slate-900 border-slate-300 rounded cursor-pointer"
                     />
-
-                    {!(isInitiatorFirst && index === 0) && (
-                      <div className="mt-1 flex items-center">
-                        <input
-                          type="checkbox"
-                          id={`final-copy-${index}`}
-                          checked={signer.receivesFinalCopy !== false} // defaults to true
-                          onChange={(e) => handleSignerChange(index, 'receivesFinalCopy', e.target.checked)}
-                          className="h-3.5 w-3.5 text-slate-900 focus:ring-slate-900 border-slate-300 rounded cursor-pointer"
-                        />
-                        <label htmlFor={`final-copy-${index}`} className="ml-2 text-[11px] font-medium text-slate-500 cursor-pointer">
-                          Receive final signed document
-                        </label>
-                      </div>
-                    )}
-
+                    <label htmlFor="initiatorFinalCopy" className="ml-2 block text-[11px] font-medium text-slate-700 cursor-pointer flex-grow truncate">
+                      Receive final copy
+                    </label>
                   </div>
-
-                  {index > 0 && (
-                    <button onClick={() => removeSigner(index)} className="absolute -right-2 -top-2 sm:static sm:mt-2 text-slate-400 hover:text-red-500 transition-colors">
-                      <Trash2 className="h-5 w-5" />
-                    </button>
-                  )}
                 </div>
-              ))}
-            </div>
 
-            <div className="mt-4">
-              <button onClick={addSigner} className="flex items-center text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors">
-                <Plus className="h-4 w-4 mr-1" /> Add Next Signer
-              </button>
-            </div>
+                <div className="space-y-2">
+                  {signers.map((signer, index) => {
+                    const isEditing = editingSignerId === signer.id || (!signer.name && !signer.email);
+                    return (
+                    <div key={signer.id} className={`p-2 border rounded shadow-sm relative transition-colors ${activeSignerId === signer.id ? 'bg-white border-blue-400 ring-1 ring-blue-400' : 'bg-white border-slate-200'}`} onClick={() => setActiveSignerId(signer.id)}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${signer.color}`}>
+                          {signer.role}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          {!isEditing && (
+                            <button onClick={(e) => { e.stopPropagation(); setEditingSignerId(signer.id); }} className="text-slate-400 hover:text-blue-600 transition-colors p-1">
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                          {index > 0 && (
+                            <button onClick={(e) => { e.stopPropagation(); removeSigner(index); }} className="text-slate-400 hover:text-red-500 transition-colors p-1">
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {isEditing ? (
+                        <div className="space-y-1 relative">
+                          <div>
+                            <input
+                              type="text"
+                              placeholder="Name or email search..."
+                              value={signer.name}
+                              disabled={signer.locked}
+                              onChange={(e) => {
+                                handleSignerChange(index, 'name', e.target.value);
+                                if (e.target.value.length >= 2) {
+                                  setActiveSearchIndex(index);
+                                  api.get(`/api/auth/users/search?q=${e.target.value}`)
+                                     .then(res => setUserSuggestions(res.data.users))
+                                     .catch(err => console.error(err));
+                                } else {
+                                  setUserSuggestions([]);
+                                }
+                              }}
+                              onBlur={() => setTimeout(() => setUserSuggestions([]), 200)}
+                              className="block w-full text-xs border-slate-200 rounded focus:ring-slate-900 focus:border-slate-900 disabled:bg-slate-50 disabled:text-slate-500 py-1.5 px-2 border"
+                            />
+                            {activeSearchIndex === index && userSuggestions.length > 0 && (
+                              <ul className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-40 overflow-y-auto">
+                                {userSuggestions.map(u => (
+                                  <li 
+                                    key={u.id}
+                                    onMouseDown={() => {
+                                       handleSignerChange(index, 'name', u.name);
+                                       handleSignerChange(index, 'email', u.email);
+                                       setUserSuggestions([]);
+                                    }}
+                                    className="px-2 py-1.5 text-[11px] cursor-pointer hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
+                                  >
+                                    <div className="font-medium text-slate-900 truncate">{u.name}</div>
+                                    <div className="text-slate-500 truncate">{u.email}</div>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
 
-            <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
-              <button onClick={() => setCurrentStep(1)} className="flex items-center gap-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg px-3 py-2 mr-2 hover:bg-slate-50 hover:border-slate-400 transition-colors">
-                Back
-              </button>
-              <div className="flex items-center gap-3">
-                <button onClick={handleSaveAsDraft} disabled={isLoading} className="px-4 py-2.5 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 transition-colors disabled:opacity-50">
-                  {isLoading ? 'Saving...' : 'Save as draft'}
-                </button>
-                <button onClick={handleHierarchySubmit} className="flex items-center py-2.5 px-6 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors">
-                  Continue to Canvas <ArrowRight className="ml-2 h-4 w-4" />
-                </button>
+                          <div>
+                            <input
+                              type="email"
+                              placeholder="Email Address"
+                              value={signer.email}
+                              disabled={signer.locked}
+                              onChange={(e) => handleSignerChange(index, 'email', e.target.value)}
+                              className="block w-full text-xs border-slate-200 rounded focus:ring-slate-900 focus:border-slate-900 disabled:bg-slate-50 disabled:text-slate-500 py-1.5 px-2 border"
+                            />
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            {!(isInitiatorFirst && index === 0) ? (
+                              <div className="flex items-center pt-1">
+                                <input
+                                  type="checkbox"
+                                  id={`final-copy-${index}`}
+                                  checked={signer.receivesFinalCopy !== false}
+                                  onChange={(e) => handleSignerChange(index, 'receivesFinalCopy', e.target.checked)}
+                                  className="h-3 w-3 text-slate-900 focus:ring-slate-900 border-slate-300 rounded cursor-pointer"
+                                />
+                                <label htmlFor={`final-copy-${index}`} className="ml-1.5 text-[10px] font-medium text-slate-500 cursor-pointer">
+                                  Receive final copy
+                                </label>
+                              </div>
+                            ) : <div></div>}
+                            
+                            <button onClick={(e) => { e.stopPropagation(); setEditingSignerId(null); }} className="text-[10px] text-blue-600 font-medium bg-blue-50 px-2.5 py-1 rounded hover:bg-blue-100 transition-colors">
+                              Done
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-1">
+                          <div className="text-xs font-semibold text-slate-800">{signer.name}</div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">{signer.email}</div>
+                          {!(isInitiatorFirst && index === 0) && signer.receivesFinalCopy && (
+                            <div className="text-[10px] text-slate-400 mt-1.5 flex items-center"><Check className="h-3 w-3 mr-1"/> Receives final copy</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )})}
+                </div>
+
+                <div className="pt-2">
+                  <button onClick={addSigner} className="flex items-center justify-center w-full py-2 border border-dashed border-blue-300 rounded-lg text-xs font-medium text-blue-600 hover:bg-blue-50 transition-colors">
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Add Next Signer
+                  </button>
+                </div>
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* STEP 3 UI: THE CANVAS WORKSPACE */}
-        {currentStep === 3 && (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col md:flex-row h-[750px] animate-in fade-in slide-in-from-right-4 duration-500">
-
-            {/* Left Sidebar: Tool Panel */}
-            <div className="w-full md:w-56 bg-slate-50 border-r border-slate-200 flex flex-col z-20 shadow-[2px_0_8px_-3px_rgba(0,0,0,0.1)]">
 
               {/* Recipient Dropdown Redesign */}
               <div className="p-3 border-b border-slate-200 bg-white relative">
@@ -948,17 +1011,16 @@ export default function Upload() {
               </div>
 
               {/* Draggable Fields List */}
-              <div className="p-3 flex-1 overflow-y-auto">
+              <div className="p-3">
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Standard Fields</label>
-                <DraggableField icon={PenTool} label="Signature" type="Signature" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
-                <DraggableField icon={Type} label="Initial" type="Initial" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
-                <DraggableField icon={Calendar} label="Date Signed" type="Date" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
-
-                <div className="mt-4 mb-2 h-px bg-slate-200"></div>
-
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Data Fields</label>
-                <DraggableField icon={UserSquare} label="Name" type="Name" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
-                <DraggableField icon={Type} label="Text Box" type="Text Box" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
+                <div className="grid grid-cols-2 gap-2">
+                  <DraggableField icon={PenTool} label="Signature" type="Signature" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
+                  <DraggableField icon={Type} label="Initial" type="Initial" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
+                  <DraggableField icon={Calendar} label="Date Signed" type="Date" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
+                
+                  <DraggableField icon={UserSquare} label="Name" type="Name" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
+                  <DraggableField icon={Type} label="Text Box" type="Text Box" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
+                </div>
               </div>
 
               {/* Properties Panel (Moved to Left Sidebar) */}
@@ -1031,17 +1093,17 @@ export default function Upload() {
               {/* PDF Toolbar */}
               <div className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 shadow-sm z-10">
                 <div className="flex items-center space-x-2">
-                  <button onClick={() => setCurrentStep(2)} className="flex items-center gap-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg px-3 py-2 mr-2 hover:bg-slate-50 hover:border-slate-400 transition-colors">
+                  <button onClick={() => setCurrentStep(1)} className="flex items-center gap-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg px-3 py-2 mr-2 hover:bg-slate-50 hover:border-slate-400 transition-colors">
                     Back
                   </button>
-                  <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage <= 1} className="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors disabled:opacity-50"><ChevronLeft className="h-5 w-5" /></button>
+                  <button onClick={() => scrollToPage(Math.max(currentPage - 1, 1))} disabled={currentPage <= 1} className="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors disabled:opacity-50"><ChevronLeft className="h-5 w-5" /></button>
                   <span className="text-sm font-medium text-slate-600">Page {currentPage} of {totalPages}</span>
-                  <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage >= totalPages} className="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors disabled:opacity-50"><ChevronRight className="h-5 w-5" /></button>
+                  <button onClick={() => scrollToPage(Math.min(currentPage + 1, totalPages))} disabled={currentPage >= totalPages} className="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors disabled:opacity-50"><ChevronRight className="h-5 w-5" /></button>
                 </div>
 
                 <div className="flex items-center space-x-1 border-l border-r border-slate-200 px-4">
                   <button className="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"><Search className="h-4 w-4" /></button>
-                  <span className="text-xs font-medium text-slate-500 w-12 text-center">100%</span>
+                  <span className="text-xs font-medium text-slate-500 w-12 text-center">{Math.round(pdfScale * 100)}%</span>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -1057,18 +1119,25 @@ export default function Upload() {
                   </button>
                 </div>
               </div>
-
-              {/* The Actual Canvas Area */}
+                          {/* The Actual Canvas Area */}
               <div
-                className="flex-1 overflow-auto p-8 flex justify-center relative bg-slate-200/50"
+                ref={pdfContainerRef}
+                className="flex-1 overflow-auto p-4 md:p-8 bg-slate-200/50"
                 onClick={() => setSelectedFieldId(null)}
+                onScroll={handleScroll}
               >
-                <div
-                  id="pdf-dropzone"
-                  className={`relative shadow-lg border border-slate-200 bg-white w-[750px] mx-auto ${canvasFileSource ? 'h-fit' : 'min-h-[500px]'}`}
-                  onDragOver={handleDragOver}
-                  onDrop={handleDrop}
-                >
+                {/* 
+                  Wrapper div strictly matches the scaled width. 
+                  This ensures mx-auto centers it flawlessly without flex layout bugs or clipping!
+                */}
+                <div style={{ width: 750 * pdfScale }} className="mx-auto">
+                  <div 
+                    style={{ 
+                      transform: `scale(${pdfScale})`, 
+                      transformOrigin: 'top left'
+                    }} 
+                    className="w-[750px] flex flex-col"
+                  >
                   {canvasFileSource ? (
                     <Document
                       file={canvasFileSource}
@@ -1076,71 +1145,83 @@ export default function Upload() {
                       loading={<div className="p-20 text-slate-400 flex justify-center w-[750px]">Loading document...</div>}
                       error={<div className="p-20 text-red-500 flex justify-center w-[750px]">Failed to load PDF.</div>}
                     >
-                      <Page
-                        pageNumber={currentPage}
-                        width={750}
-                        renderTextLayer={true}
-                        renderAnnotationLayer={true}
-                        className="shadow-sm"
-                      />
+                      {Array.from(new Array(totalPages), (el, index) => {
+                        const pageIndex = index + 1;
+                        return (
+                          <div
+                            key={`page_${pageIndex}`}
+                            id={`pdf-dropzone-${pageIndex}`}
+                            className="relative shadow-lg border border-slate-200 bg-white w-[750px] mx-auto mb-8"
+                            onDragOver={handleDragOver}
+                            onDrop={(e) => handleDrop(e, pageIndex)}
+                          >
+                            <Page
+                              pageNumber={pageIndex}
+                              width={750}
+                              renderTextLayer={true}
+                              renderAnnotationLayer={true}
+                              className="shadow-sm"
+                            />
+
+                            {/* Render Placed Fields for Current Page */}
+                            {fields.filter(f => f.page === pageIndex).map((field) => {
+                              const signer = signers.find(s => s.id === field.signerId);
+                              const isSelected = selectedFieldId === field.id;
+                              const baseColor = signer ? signer.color : 'bg-slate-100 text-slate-700 border-slate-200';
+                              const bgColor = isSelected ? baseColor.split(' ')[0].replace('-100', '-200') : baseColor.split(' ')[0];
+                              const borderColor = isSelected ? baseColor.split(' ')[2].replace('-200', '-500') : baseColor.split(' ')[2];
+                              const textColor = baseColor.split(' ')[1];
+                              const ResizeHandle = () => (
+                                <div className={`w-3 h-3 bg-white border border-slate-300 rounded-full shadow-sm absolute -right-1.5 -bottom-1.5 ${isSelected ? 'block' : 'hidden group-hover:block'}`} />
+                              );
+
+                              return (
+                                <Rnd
+                                  scale={pdfScale}
+                                  key={field.id}
+                                  bounds="parent"
+                                  size={{ width: field.width, height: field.height }}
+                                  position={{ x: field.x, y: field.y }}
+                                  dragGrid={[10, 10]}
+                                  resizeGrid={[10, 10]}
+                                  onDragStart={(e) => { e.stopPropagation(); setSelectedFieldId(field.id); }}
+                                  onDragStop={(e, data) => updateFieldPosition(field.id, data.x, data.y)}
+                                  onResizeStop={(e, direction, ref, delta, position) => {
+                                    updateFieldSize(field.id, parseInt(ref.style.width), parseInt(ref.style.height));
+                                    updateFieldPosition(field.id, position.x, position.y);
+                                  }}
+                                  disableDragging={false}
+                                  enableResizing={{ bottom: true, right: true, bottomRight: true }}
+                                  resizeHandleComponent={{
+                                    bottomRight: <ResizeHandle />
+                                  }}
+                                  className={`absolute border-2 rounded flex items-center justify-center group cursor-move z-40 hover:shadow-md transition-shadow ${bgColor} ${borderColor} ${isSelected ? 'shadow-md z-50' : 'shadow-sm'}`}
+                                  onClick={(e) => { e.stopPropagation(); setSelectedFieldId(field.id); }}
+                                >
+                                  <span className={`text-[10px] font-bold uppercase tracking-wider flex items-center ${textColor}`}>
+                                    {field.type} {field.required ? '*' : ''}
+                                  </span>
+                                </Rnd>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
                     </Document>
                   ) : (
-                    <div className="w-[750px] aspect-[8.5/11] flex flex-col items-center justify-center">
+                    <div className="w-[750px] aspect-[8.5/11] flex flex-col items-center justify-center bg-white shadow-lg border border-slate-200">
                       <FileSignature className="h-16 w-16 text-slate-300 mb-4" />
                       <p className="text-slate-400 font-medium">No document loaded</p>
                     </div>
                   )}
-
-                  {/* Render Placed Fields for Current Page */}
-                  {fields.filter(f => f.page === currentPage).map((field) => {
-                    const signer = signers.find(s => s.id === field.signerId);
-                    const isSelected = selectedFieldId === field.id;
-                    const baseColor = signer ? signer.color : 'bg-slate-100 text-slate-700 border-slate-200';
-                    const bgColor = isSelected ? baseColor.split(' ')[0].replace('-100', '-200') : baseColor.split(' ')[0];
-                    const borderColor = isSelected ? baseColor.split(' ')[2].replace('-200', '-500') : baseColor.split(' ')[2];
-                    const textColor = baseColor.split(' ')[1];
-                    // Visual handle for resizing
-                    const ResizeHandle = () => (
-                      <div className={`w-3 h-3 bg-white border border-slate-300 rounded-full shadow-sm absolute -right-1.5 -bottom-1.5 ${isSelected ? 'block' : 'hidden group-hover:block'}`} />
-                    );
-
-                    return (
-                      <Rnd
-                        key={field.id}
-                        bounds="parent"
-                        size={{ width: field.width, height: field.height }}
-                        position={{ x: field.x, y: field.y }}
-                        dragGrid={[10, 10]}
-                        resizeGrid={[10, 10]}
-                        onDragStart={(e) => { e.stopPropagation(); setSelectedFieldId(field.id); }}
-                        onDragStop={(e, data) => updateFieldPosition(field.id, data.x, data.y)}
-                        onResizeStop={(e, direction, ref, delta, position) => {
-                          updateFieldSize(field.id, parseInt(ref.style.width), parseInt(ref.style.height));
-                          updateFieldPosition(field.id, position.x, position.y);
-                        }}
-                        disableDragging={false}
-                        enableResizing={{ bottom: true, right: true, bottomRight: true }}
-                        resizeHandleComponent={{
-                          bottomRight: <ResizeHandle />
-                        }}
-                        className={`absolute border-2 rounded flex items-center justify-center group cursor-move z-40 hover:shadow-md transition-shadow ${bgColor} ${borderColor} ${isSelected ? 'shadow-md z-50' : 'shadow-sm'}`}
-                        onClick={(e) => { e.stopPropagation(); setSelectedFieldId(field.id); }}
-                      >
-                        <span className={`text-[10px] font-bold uppercase tracking-wider flex items-center ${textColor}`}>
-                          {field.type} {field.required ? '*' : ''}
-                        </span>
-                      </Rnd>
-                    );
-                  })}
                 </div>
               </div>
-
             </div>
-
           </div>
+        </div>
         )}
 
       </main>
     </div>
   );
-}
+}

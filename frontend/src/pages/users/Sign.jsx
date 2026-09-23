@@ -239,6 +239,43 @@ export default function Sign() {
     return () => window.removeEventListener('resize', calculateScale);
   }, [documentFile]);
 
+  // Continuous Scroll Functions
+  const handleScroll = (e) => {
+    const container = e.target;
+    const scrollPosition = container.scrollTop;
+    
+    // Find the page currently most visible in the viewport
+    let bestPage = 1;
+    let minDistance = Infinity;
+
+    for (let i = 1; i <= totalPages; i++) {
+      const pageEl = document.getElementById(`page-container-${i}`);
+      if (pageEl) {
+        // Calculate the distance from the top of the container to the top of the page element
+        const distance = Math.abs(pageEl.offsetTop - scrollPosition);
+        if (distance < minDistance) {
+          minDistance = distance;
+          bestPage = i;
+        }
+      }
+    }
+
+    if (bestPage !== currentPage) {
+      setCurrentPage(bestPage);
+    }
+  };
+
+  const scrollToPage = (pageNum) => {
+    if (pageNum < 1 || pageNum > totalPages) return;
+    
+    const pageEl = document.getElementById(`page-container-${pageNum}`);
+    if (pageEl) {
+      pageEl.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      setCurrentPage(pageNum); // Fallback if element not found
+    }
+  };
+
   // 2. Handle Opening the Signature Modal
   const handleFieldClick = (field) => {
     setActiveFieldId(field.id);
@@ -625,7 +662,7 @@ export default function Sign() {
       </header>
 
       {/* PDF VIEWER AND CANVAS */}
-      <main className="flex-1 overflow-auto bg-slate-200/50 flex flex-col relative py-8">
+      <main className="flex-1 overflow-auto bg-slate-200/50 flex flex-col relative py-8" onScroll={handleScroll}>
 
          {/* --- FLOATING ACTION GUIDE --- */}
           <div className="lg:absolute lg:left-6 lg:top-8 w-[90%] max-w-sm lg:w-56 mx-auto lg:mx-0 bg-white border border-slate-200 rounded-lg shadow-md lg:shadow-lg z-20 overflow-hidden animate-in fade-in slide-in-from-left-4 mb-6 lg:mb-0 shrink-0">
@@ -649,7 +686,7 @@ export default function Sign() {
                   return (
                     <div 
                       key={pageNum} 
-                      onClick={() => setCurrentPage(pageNum)}
+                      onClick={() => scrollToPage(pageNum)}
                       className={`cursor-pointer p-1.5 border rounded-lg transition-all ${
                         currentPage === pageNum 
                           ? 'bg-blue-50 border-blue-300 shadow-sm' 
@@ -678,91 +715,91 @@ export default function Sign() {
 
         {/* Pagination Controls */}
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white px-4 py-2 rounded-full shadow-lg border border-slate-200 flex items-center space-x-4 z-20">
-          <button onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} disabled={currentPage <= 1} className="text-slate-400 hover:text-slate-900 disabled:opacity-50"><ChevronLeft className="h-5 w-5" /></button>
+          <button onClick={() => scrollToPage(Math.max(currentPage - 1, 1))} disabled={currentPage <= 1} className="text-slate-400 hover:text-slate-900 disabled:opacity-50"><ChevronLeft className="h-5 w-5" /></button>
           <span className="text-sm font-medium text-slate-600">Page {currentPage} of {totalPages}</span>
-          <button onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))} disabled={currentPage >= totalPages} className="text-slate-400 hover:text-slate-900 disabled:opacity-50"><ChevronRight className="h-5 w-5" /></button>
+          <button onClick={() => scrollToPage(Math.min(currentPage + 1, totalPages))} disabled={currentPage >= totalPages} className="text-slate-400 hover:text-slate-900 disabled:opacity-50"><ChevronRight className="h-5 w-5" /></button>
         </div>
 
 
 
-        {/* The PDF Container */}
-        <div 
-          ref={containerRef}
-          className="mx-auto flex justify-center" 
-          style={{ 
-            transform: `scale(${scale})`, 
-            transformOrigin: 'top center',
-            marginBottom: scale < 1 ? `-${(1 - scale) * 970}px` : '0' 
-          }}
-        > 
-          <div className="relative shadow-xl border border-slate-200 bg-white origin-top" style={{ width: '750px' }}>
-          <Document
-            file={documentFile} // URL from backend
-            onLoadSuccess={onDocumentLoadSuccess}
-            loading={<div className="p-20 text-slate-400 w-[750px] text-center">Decrypting document...</div>}
+        {/* The Actual Canvas Area */}
+        <div className="mx-auto" style={{ width: 750 * scale }}>
+          <div 
+            ref={containerRef}
+            style={{ 
+              transform: `scale(${scale})`, 
+              transformOrigin: 'top left'
+            }} 
+            className="w-[750px] flex flex-col"
           >
-            <Page
-              pageNumber={currentPage}
-              width={750}
-              renderTextLayer={false}
-              renderAnnotationLayer={false}
-            />
-          </Document>
+            <Document
+              file={documentFile} // URL from backend
+              onLoadSuccess={onDocumentLoadSuccess}
+              loading={<div className="p-20 text-slate-400 w-[750px] text-center">Decrypting document...</div>}
+            >
+              {Array.from(new Array(totalPages), (el, index) => {
+                const pageIndex = index + 1;
+                return (
+                  <div
+                    key={`page_${pageIndex}`}
+                    id={`page-container-${pageIndex}`}
+                    className="relative bg-white shadow-xl border border-slate-200 shrink-0 w-[750px] aspect-[8.5/11] mb-6 last:mb-0"
+                  >
+                    <Page
+                      pageNumber={pageIndex}
+                      width={750}
+                      renderTextLayer={false}
+                      renderAnnotationLayer={false}
+                      loading={<div className="w-[750px] aspect-[8.5/11] bg-slate-50 animate-pulse flex items-center justify-center text-slate-400">Loading page {pageIndex}...</div>}
+                    />
+                    
+                    {/* Render Assigned Fields overlaying this specific page */}
+                    {fields.filter(f => f.page === pageIndex).map((field) => {
+                      const isCompleted = !!completedFields[field.id];
 
-          {/* Render Assigned Fields overlaying the PDF */}
-          {fields.filter(f => f.page === currentPage).map((field) => {
-            const isCompleted = !!completedFields[field.id];
-
-            return (
-              <Rnd
-                key={field.id}
-                bounds="parent"
-                size={{ width: field.width || 120, height: field.height || 40 }}
-                position={{ x: field.x || 0, y: field.y || 0 }}
-                disableDragging={true}
-                enableResizing={{ top: true, right: true, bottom: true, left: true, topRight: true, bottomRight: true, bottomLeft: true, topLeft: true }}
-                onResizeStart={() => { isResizing.current = true; }}
-                onResizeStop={(e, direction, ref, delta, position) => {
-                  setTimeout(() => {
-                    isResizing.current = false;
-                  }, 150);
-                
-                  const newWidth = parseInt(ref.style.width);
-                  const newHeight = parseInt(ref.style.height);
-                  setFields(fields.map(f => f.id === field.id ? { ...f, width: newWidth, height: newHeight, x: position.x, y: position.y } : f));
-                  setTimeout(() => { isResizing.current = false; }, 200);
-                }}
-
-
-                className={`absolute cursor-pointer border-2 rounded shadow-sm transition-colors flex items-center justify-center z-30 hover:shadow-md
-                  ${isCompleted
-                    ? 'bg-blue-50 border-blue-400 text-blue-900'
-                    : 'bg-amber-100/90 border-amber-400 text-amber-800 animate-pulse hover:animate-none hover:bg-amber-200/90'
-                  }`}
-                onClick={() => { if (!isResizing.current) handleFieldClick(field); }}
-              >
-                {isCompleted ? (
-                  <span className={`text-lg font-medium overflow-hidden max-h-full w-full flex items-center justify-center ${field.type === 'Signature' || field.type === 'Initial' ? 'font-[cursive]' : ''}`}>
-                    {completedFields[field.id].startsWith('data:image/') ? (
-                      <img src={completedFields[field.id]} alt="Signature" className="max-h-full max-w-full object-contain pointer-events-none" />
-                    ) : (
-                      completedFields[field.id].replace('TYPED::', '')
-                    )}
-                  </span>
-                ) : (
-                  <span className="text-xs font-bold uppercase tracking-wider flex items-center pointer-events-none">
-                    {field.type === 'Signature' ? (
-                      <><PenTool className="h-3 w-3 mr-1" /> Sign Here</>
-                    ) : field.type === 'Initial' ? (
-                      <><PenTool className="h-3 w-3 mr-1" /> Paraph Here</>
-                    ) : (
-                      field.type
-                    )}
-                  </span>
-                )}
-              </Rnd>
-            );
-          })}
+                      return (
+                        <div
+                          key={field.id}
+                          style={{
+                            position: 'absolute',
+                            left: `${field.x || 0}px`,
+                            top: `${field.y || 0}px`,
+                            width: `${field.width || 120}px`,
+                            height: `${field.height || 40}px`,
+                          }}
+                          className={`cursor-pointer border-2 rounded shadow-sm transition-colors flex items-center justify-center z-30 hover:shadow-md
+                            ${isCompleted
+                              ? 'bg-blue-50 border-blue-400 text-blue-900'
+                              : 'bg-amber-100/90 border-amber-400 text-amber-800 animate-pulse hover:animate-none hover:bg-amber-200/90'
+                            }`}
+                          onClick={() => { if (!isResizing.current) handleFieldClick(field); }}
+                        >
+                          {isCompleted ? (
+                            <span className={`text-lg font-medium overflow-hidden max-h-full w-full flex items-center justify-center ${field.type === 'Signature' || field.type === 'Initial' ? 'font-[cursive]' : ''}`}>
+                              {completedFields[field.id].startsWith('data:image/') ? (
+                                <img src={completedFields[field.id]} alt="Signature" className="max-h-full max-w-full object-contain pointer-events-none" />
+                              ) : (
+                                completedFields[field.id].replace('TYPED::', '')
+                              )}
+                            </span>
+                          ) : (
+                            <span className="text-xs font-bold uppercase tracking-wider flex items-center pointer-events-none">
+                              {field.type === 'Signature' ? (
+                                <><PenTool className="h-3 w-3 mr-1" /> Sign Here</>
+                              ) : field.type === 'Initial' ? (
+                                <><PenTool className="h-3 w-3 mr-1" /> Paraph Here</>
+                              ) : (
+                                field.type
+                              )}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </Document>
           </div>
         </div>
       </main>
