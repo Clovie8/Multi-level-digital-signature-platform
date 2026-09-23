@@ -95,7 +95,7 @@ export default function Layout() {
     { name: 'Documents', href: '/documents', icon: FolderOpen },
     { name: 'Upload', href: '/upload', icon: UploadCloud },
     { name: 'Templates', href: '/folder', icon: FileSignature },
-    { name: 'Settings', href: '/Settings', icon: Settings },
+    { name: 'Profile Settings', href: '/Settings', icon: Settings },
     ...(user?.role === 'admin' ? [{ name: 'Audit Logs', href: '/admin/audit-logs', icon: ScrollText }] : []),
   ];
   // Dynamically set the Header Title based on the current URL route

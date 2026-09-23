@@ -385,7 +385,7 @@ function RowActions({ document, currentUser, onView, onVoided, onContextMenuActi
   // items.push({ key: 'rename', label: 'Rename', icon: Pencil, onClick: () => { onContextMenuAction('rename', { ...document, type: 'document' }) } });
   if (document.initiatorId === currentUser?.id) {
     items.push({ key: 'move', label: 'Move to...', icon: Folder, onClick: () => { onContextMenuAction('move', { ...document, type: 'document' }) } });
-    items.push({ key: 'delete', label: 'Delete', icon: Trash2, onClick: () => { onContextMenuAction('delete', { ...document, type: 'document' }) }, danger: true });
+    // items.push({ key: 'delete', label: 'Delete', icon: Trash2, onClick: () => { onContextMenuAction('delete', { ...document, type: 'document' }) }, danger: true });
   }
 
   return (
@@ -994,18 +994,23 @@ function TemplateTableRow({ template, isChecked, onCheck, onUse, setContextMenu,
       </td>
       <td className="px-3 py-2">
         <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-          {isUsing && <Loader2 className="h-4 w-4 text-slate-400 animate-spin" />}
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              const rect = e.currentTarget.getBoundingClientRect();
-              setContextMenu({ x: rect.right - 150, y: rect.bottom, item: { ...template, type: 'template' } });
-            }}
-            className="h-8 w-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-          >
-            <MoreVertical className="h-5 w-5" />
-          </button>
+          {isUsing ? (
+            <div className="h-8 w-8 flex items-center justify-center">
+              <Loader2 className="h-5 w-5 text-slate-900 animate-spin" />
+            </div>
+          ) : (
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const rect = e.currentTarget.getBoundingClientRect();
+                setContextMenu({ x: rect.right - 150, y: rect.bottom, item: { ...template, type: 'template' } });
+              }}
+              className="h-8 w-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            >
+              <MoreVertical className="h-5 w-5" />
+            </button>
+          )}
         </div>
       </td>
     </tr>
@@ -1131,17 +1136,38 @@ export default function Documents() {
         if (doc) return { id, type: 'document' };
         const f = folders.find(f => f.id === id);
         if (f) return { id, type: 'folder' };
+        const t = templates.find(t => t.id === id);
+        if (t) return { id, type: 'template' };
         return null;
       }).filter(Boolean);
 
       try {
-        await api.put('/api/folders/move-bulk', {
+        const res = await api.put('/api/folders/move-bulk', {
           items: itemsToMove,
           destinationFolderId: destFolder.id
         });
+        
+        const results = res.data.results || [];
+        const failures = results.filter(r => !r.success);
+        
+        if (failures.length > 0) {
+          const code = failures[0].error;
+          let msg = code || 'Failed to move items';
+          if (code === 'NO_WRITE_ACCESS_DESTINATION') msg = 'You do not have privileges to move items into this folder.';
+          if (code === 'NO_WRITE_ACCESS_SOURCE') msg = 'You do not have privileges to move items out of their current folder.';
+          if (code === 'NOT_OWNER') msg = 'You do not have privileges to move this item.';
+          if (code === 'CIRCULAR_DEPENDENCY') msg = 'You cannot move a folder into its own subfolder.';
+          if (code === 'CANNOT_MOVE_TO_ROOT') msg = 'You cannot move a shared item to your root space.';
+          if (code === 'CANNOT_MOVE_OUT_OF_SHARED_SPACE') msg = 'You cannot move a shared item out of its shared folder hierarchy.';
+          toast.error(msg);
+        } else {
+          toast.success(`Successfully moved ${itemsToMove.length} item(s)`);
+        }
+        
         clearChecked();
         fetchDocuments();
         fetchFolders();
+        fetchTemplates();
       } catch (err) {
         console.error(err);
         const code = err.response?.data?.error;
@@ -1150,6 +1176,8 @@ export default function Documents() {
         if (code === 'NO_WRITE_ACCESS_SOURCE') msg = 'You do not have privileges to move items out of their current folder.';
         if (code === 'NOT_OWNER') msg = 'You do not have privileges to move this item.';
         if (code === 'CIRCULAR_DEPENDENCY') msg = 'You cannot move a folder into its own subfolder.';
+        if (code === 'CANNOT_MOVE_TO_ROOT') msg = 'You cannot move a shared item to your root space.';
+        if (code === 'CANNOT_MOVE_OUT_OF_SHARED_SPACE') msg = 'You cannot move a shared item out of its shared folder hierarchy.';
         toast.error(msg);
       }
     } else {
@@ -1162,6 +1190,7 @@ export default function Documents() {
         });
         fetchDocuments();
         fetchFolders();
+        fetchTemplates();
       } catch (err) {
         console.error(err);
         const code = err.response?.data?.error;
@@ -1170,13 +1199,27 @@ export default function Documents() {
         if (code === 'NO_WRITE_ACCESS_SOURCE') msg = 'You do not have privileges to move items out of their current folder.';
         if (code === 'NOT_OWNER') msg = 'You do not have privileges to move this item.';
         if (code === 'CIRCULAR_DEPENDENCY') msg = 'You cannot move a folder into its own subfolder.';
+        if (code === 'CANNOT_MOVE_TO_ROOT') msg = 'You cannot move a shared item to your root space.';
+        if (code === 'CANNOT_MOVE_OUT_OF_SHARED_SPACE') msg = 'You cannot move a shared item out of its shared folder hierarchy.';
         toast.error(msg);
       }
     }
   };
 
   
-  const [currentFolderId, setCurrentFolderId] = useState(null);
+  const [folderState, setFolderState] = useState({
+    all: null,
+    templates: null
+  });
+  
+  const currentFolderId = activeTab === 'templates' ? folderState.templates : folderState.all;
+  
+  const setCurrentFolderId = (id) => {
+    setFolderState(prev => ({
+      ...prev,
+      [activeTab === 'templates' ? 'templates' : 'all']: id
+    }));
+  };
   const [newFolderName, setNewFolderName] = useState('');
   const [isCreateFolderModalOpen, setIsCreateFolderModalOpen] = useState(false);
   const [isRenameFolderModalOpen, setIsRenameFolderModalOpen] = useState(false);
@@ -1235,7 +1278,8 @@ export default function Documents() {
     try {
       const res = await api.post('/api/folders', {
         name: newFolderName,
-        parentId: currentFolderId
+        parentId: currentFolderId,
+        type: activeTab === 'templates' ? 'template' : 'document'
       });
       
       const newFolder = res.data.folder || res.data;
@@ -1444,32 +1488,34 @@ export default function Documents() {
   const currentFolderDocs = useMemo(() => {
     return documents.filter(d => {
       const docFolderId = d.folder_id || d.folderId;
-      if (currentFolderId) return docFolderId === currentFolderId;
+      if (folderState.all) return docFolderId === folderState.all;
       return !docFolderId;
     });
-  }, [documents, currentFolderId]);
+  }, [documents, folderState.all]);
 
   const currentFolderTemplates = useMemo(() => {
     return templates.filter(t => {
       const tFolderId = t.folder_id || t.folderId;
-      if (currentFolderId) return tFolderId === currentFolderId;
+      if (folderState.templates) return tFolderId === folderState.templates;
       return !tFolderId;
     });
-  }, [templates, currentFolderId]);
+  }, [templates, folderState.templates]);
 
   const needsDecisionCount = useMemo(
-    () => currentFolderDocs.filter((d) => d.status === 'declined' || d.status === 'pending_review').length,
-    [currentFolderDocs]
+    () => documents.filter((d) => d.status === 'declined' || d.status === 'pending_review').length,
+    [documents]
   );
 
   const filteredDocuments = useMemo(() => {
     if (activeTab === 'templates') return []; // Handled separately
     return documents.filter((d) => {
-      const docFolderId = d.folder_id || d.folderId;
-      if (currentFolderId) {
-        if (docFolderId !== currentFolderId) return false;
-      } else {
-        if (docFolderId) return false;
+      if (activeTab !== 'needs_decision') {
+        const docFolderId = d.folder_id || d.folderId;
+        if (currentFolderId) {
+          if (docFolderId !== currentFolderId) return false;
+        } else {
+          if (docFolderId) return false;
+        }
       }
       
       if (activeTab === 'needs_decision' && !['declined', 'pending_review'].includes(d.status)) return false;
@@ -1543,9 +1589,20 @@ export default function Documents() {
     return crumbs;
   }, [currentFolderId, folders]);
 
-  const currentLevelFolders = folders.filter(f => 
-    currentFolderId ? (f.parent_folder_id === currentFolderId || f.parentId === currentFolderId || f.parent_id === currentFolderId) : (!f.parent_folder_id && !f.parentId && !f.parent_id)
-  );
+  const currentLevelFolders = useMemo(() => {
+    if (activeTab === 'needs_decision') return [];
+    
+    return folders.filter(f => {
+      const isCorrectLevel = currentFolderId 
+        ? (f.parent_folder_id === currentFolderId || f.parentId === currentFolderId || f.parent_id === currentFolderId) 
+        : (!f.parent_folder_id && !f.parentId && !f.parent_id);
+        
+      if (!isCorrectLevel) return false;
+      
+      const expectedType = activeTab === 'templates' ? 'template' : 'document';
+      return f.type === expectedType;
+    });
+  }, [folders, currentFolderId, activeTab]);
 
   const canBulkDownload = checkedDocuments.length > 0 && checkedDocuments.every((d) => d.status === 'completed');
   const canBulkRemind = checkedDocuments.length > 0 && checkedDocuments.every((d) => ['pending', 'in_progress'].includes(d.status));
@@ -1562,13 +1619,15 @@ export default function Documents() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => navigate('/upload')}
-              className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 text-white text-sm font-semibold rounded-md hover:bg-slate-800 transition-colors"
-            >
-              <Plus className="h-4 w-4" />
-              New document
-            </button>
+            {activeTab === 'all' && (
+              <button
+                onClick={() => navigate('/upload')}
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 text-white text-sm font-semibold rounded-md hover:bg-slate-800 transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+                New document
+              </button>
+            )}
             {activeTab === 'templates' && (
               <>
                 <input 
@@ -1617,26 +1676,28 @@ export default function Documents() {
         </div>
 
         
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <button onClick={() => setCurrentFolderId(null)} className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${!currentFolderId ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}><HomeIcon className="h-4 w-4" /> Root</button>
-            {breadcrumbs.map((crumb, index) => (
-              <React.Fragment key={crumb.id}>
-                <span className="text-slate-400">/</span>
-                <button 
-                  onClick={() => setCurrentFolderId(crumb.id)} 
-                  className={`flex items-center gap-0.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${index === breadcrumbs.length - 1 ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                >
-                  <Folder className="h-4 w-4" />
-                  {crumb.name}
-                </button>
-              </React.Fragment>
-            ))}
+        {activeTab !== 'needs_decision' && (
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <button onClick={() => setCurrentFolderId(null)} className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${!currentFolderId ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}><HomeIcon className="h-4 w-4" /> Root</button>
+              {breadcrumbs.map((crumb, index) => (
+                <React.Fragment key={crumb.id}>
+                  <span className="text-slate-400">/</span>
+                  <button 
+                    onClick={() => setCurrentFolderId(crumb.id)} 
+                    className={`flex items-center gap-0.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${index === breadcrumbs.length - 1 ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  >
+                    <Folder className="h-4 w-4" />
+                    {crumb.name}
+                  </button>
+                </React.Fragment>
+              ))}
+            </div>
+            <button onClick={() => setIsCreateFolderModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors text-sm font-medium">
+              <Folder className="h-4 w-4" /> New Folder
+            </button>
           </div>
-          <button onClick={() => setIsCreateFolderModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors text-sm font-medium">
-            <Folder className="h-4 w-4" /> New Folder
-          </button>
-        </div>
+        )}
 
         <div className="flex gap-3 mb-4 flex-wrap items-center">
           <div className="relative flex-1 min-w-[200px] max-w-xs">
@@ -1644,7 +1705,7 @@ export default function Documents() {
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search documents..."
+              placeholder={activeTab === 'templates' ? 'Search templates...' : 'Search documents...'}
               className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900"
             />
           </div>
@@ -1912,7 +1973,7 @@ export default function Documents() {
           </div>
         </div>
       )}
-      <MoveModal isOpen={isMoveModalOpen} onClose={() => setIsMoveModalOpen(false)} selectedItems={selectedItemsForMove} currentFolderId={currentFolderId} onMoveSuccess={() => { clearChecked(); fetchDocuments(); fetchFolders(); }} />
+      <MoveModal isOpen={isMoveModalOpen} onClose={() => setIsMoveModalOpen(false)} selectedItems={selectedItemsForMove} currentFolderId={currentFolderId} activeTab={activeTab} onMoveSuccess={() => { clearChecked(); fetchDocuments(); fetchFolders(); fetchTemplates(); }} />
       <ShareModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} folderId={shareFolderId} />
     </div>
   );
