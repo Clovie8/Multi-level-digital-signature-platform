@@ -302,14 +302,14 @@ export default function Review() {
                   <div 
                     key={`review-page-${pageIndex}`} 
                     id={`review-page-${pageIndex}`} 
-                    className="relative bg-white shadow-xl mb-6 last:mb-0 aspect-[8.5/11]"
+                    className="relative bg-white shadow-xl mb-6 last:mb-0"
                   >
                     <Page 
                       pageNumber={pageIndex} 
                       width={750} 
                       renderTextLayer={false} 
                       renderAnnotationLayer={false} 
-                      loading={<div className="w-[750px] aspect-[8.5/11] bg-slate-50 animate-pulse flex items-center justify-center text-slate-400">Loading page {pageIndex}...</div>}
+                      loading={<div className="w-[750px] h-[970px] bg-slate-50 animate-pulse flex items-center justify-center text-slate-400">Loading page {pageIndex}...</div>}
                     />
                     
                     {/* Overlay Pending Signature Fields */}

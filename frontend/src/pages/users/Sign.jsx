@@ -118,6 +118,7 @@ export default function Sign() {
   const sigPadRef = useRef(null);
   const padContainerRef = useRef(null);
   const [signMode, setSignMode] = useState('draw'); // 'draw' or 'type'
+  const [typeFontSize, setTypeFontSize] = useState(24);
   const [padSize, setPadSize] = useState({ width: 450, height: 160 });
   const isResizing = useRef(false);
 
@@ -283,16 +284,15 @@ export default function Sign() {
       setSignMode('draw');
       setIsModalOpen(true);
       if (!signatureText) setSignatureText(signerInfo?.name || '');
-    } else if (field.type === 'Text Box' || field.type === 'Name') {
+    } else if (field.type === 'Text Box' || field.type === 'Name' || field.type === 'Date') {
       setSignMode('type');
       setIsModalOpen(true);
-      if (!signatureText) setSignatureText(field.type === 'Name' ? (signerInfo?.name || '') : '');
-    } else if (field.type === 'Date') {
-      // Auto-fill dates instantly without opening a modal
-      setCompletedFields(prev => ({
-        ...prev,
-        [field.id]: new Date().toLocaleDateString()
-      }));
+      if (!signatureText) {
+        if (field.type === 'Name') setSignatureText(signerInfo?.name || '');
+        else if (field.type === 'Date') setSignatureText(new Date().toLocaleDateString());
+        else setSignatureText('');
+      }
+      setTypeFontSize(16);
     }
   };
 
@@ -369,7 +369,7 @@ export default function Sign() {
 
       } else if (signMode === 'type') {
         if (!signatureText.trim()) return toast.error('Please enter your text/name.');
-        applyToFields(`TYPED::${signatureText}`);
+        applyToFields(`TYPED::${typeFontSize}::${signatureText}`);
         setIsModalOpen(false);
 
       } else if (signMode === 'upload') {
@@ -743,14 +743,14 @@ export default function Sign() {
                   <div
                     key={`page_${pageIndex}`}
                     id={`page-container-${pageIndex}`}
-                    className="relative bg-white shadow-xl border border-slate-200 shrink-0 w-[750px] aspect-[8.5/11] mb-6 last:mb-0"
+                    className="relative bg-white shadow-xl border border-slate-200 shrink-0 w-[750px] mb-6 last:mb-0"
                   >
                     <Page
                       pageNumber={pageIndex}
                       width={750}
                       renderTextLayer={false}
                       renderAnnotationLayer={false}
-                      loading={<div className="w-[750px] aspect-[8.5/11] bg-slate-50 animate-pulse flex items-center justify-center text-slate-400">Loading page {pageIndex}...</div>}
+                      loading={<div className="w-[750px] h-[970px] bg-slate-50 animate-pulse flex items-center justify-center text-slate-400">Loading page {pageIndex}...</div>}
                     />
                     
                     {/* Render Assigned Fields overlaying this specific page */}
@@ -762,24 +762,33 @@ export default function Sign() {
                           key={field.id}
                           style={{
                             position: 'absolute',
-                            left: `${field.x || 0}px`,
-                            top: `${field.y || 0}px`,
+                            left: `${field.xPct}%`,
+                            top: `${field.yPct}%`,
                             width: `${field.width || 120}px`,
                             height: `${field.height || 40}px`,
                           }}
                           className={`cursor-pointer border-2 rounded shadow-sm transition-colors flex items-center justify-center z-30 hover:shadow-md
                             ${isCompleted
-                              ? 'bg-blue-50 border-blue-400 text-blue-900'
+                              ? 'bg-slate-50 border-slate-200 text-black hover:border-slate-300'
                               : 'bg-amber-100/90 border-amber-400 text-amber-800 animate-pulse hover:animate-none hover:bg-amber-200/90'
                             }`}
                           onClick={() => { if (!isResizing.current) handleFieldClick(field); }}
                         >
                           {isCompleted ? (
-                            <span className={`text-lg font-medium overflow-hidden max-h-full w-full flex items-center justify-center ${field.type === 'Signature' || field.type === 'Initial' ? 'font-[cursive]' : ''}`}>
+                            <span 
+                              className={`font-medium overflow-hidden max-h-full w-full flex items-center justify-center ${field.type === 'Signature' || field.type === 'Initial' ? 'font-[cursive]' : ''}`}
+                              style={{ 
+                                fontSize: completedFields[field.id].startsWith('TYPED::') && completedFields[field.id].split('::').length >= 3 && !isNaN(completedFields[field.id].split('::')[1])
+                                  ? `${completedFields[field.id].split('::')[1]}px`
+                                  : field.type === 'Signature' || field.type === 'Initial' ? '24px' : '12px'
+                              }}
+                            >
                               {completedFields[field.id].startsWith('data:image/') ? (
                                 <img src={completedFields[field.id]} alt="Signature" className="max-h-full max-w-full object-contain pointer-events-none" />
                               ) : (
-                                completedFields[field.id].replace('TYPED::', '')
+                                completedFields[field.id].startsWith('TYPED::') && completedFields[field.id].split('::').length >= 3 && !isNaN(completedFields[field.id].split('::')[1])
+                                  ? completedFields[field.id].split('::').slice(2).join('::')
+                                  : completedFields[field.id].replace('TYPED::', '')
                               )}
                             </span>
                           ) : (
@@ -875,11 +884,26 @@ export default function Sign() {
                     type="text"
                     value={signatureText}
                     onChange={(e) => setSignatureText(e.target.value)}
-                    className="w-full text-lg px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 mb-2"
+                    className="w-full text-lg px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 mb-4"
                     placeholder="John Doe"
                   />
-                  <div className="bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-center min-h-[100px]">
-                    <span className="text-4xl text-slate-800" style={{ fontFamily: "'Cedarville Cursive', cursive, serif" }}>
+                  <div className="flex items-center gap-4 mb-4 bg-slate-50 p-3 rounded border border-slate-200">
+                    <span className="text-sm font-medium text-slate-700 whitespace-nowrap">Font Size</span>
+                    <input 
+                      type="range" 
+                      min="10" 
+                      max="48" 
+                      value={typeFontSize} 
+                      onChange={(e) => setTypeFontSize(Number(e.target.value))}
+                      className="w-full accent-slate-900"
+                    />
+                    <span className="text-xs font-semibold text-slate-500 w-8">{typeFontSize}px</span>
+                  </div>
+                  <div className="bg-white border border-slate-200 rounded-lg flex items-center justify-center min-h-[120px] shadow-inner overflow-hidden">
+                    <span className="text-black" style={{ 
+                      fontFamily: (fields.find(f => f.id === activeFieldId)?.type === 'Signature' || fields.find(f => f.id === activeFieldId)?.type === 'Initial') ? "'Cedarville Cursive', cursive, serif" : "inherit",
+                      fontSize: `${typeFontSize}px`
+                    }}>
                       {signatureText || 'Preview'}
                     </span>
                   </div>
