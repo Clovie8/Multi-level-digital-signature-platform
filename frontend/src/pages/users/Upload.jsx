@@ -567,10 +567,14 @@ export default function Upload() {
       const dropzone = document.getElementById(`pdf-dropzone-${pageIndex}`);
       if (!dropzone) return;
       const bounds = dropzone.getBoundingClientRect();
-      const x = e.clientX - bounds.left;
-      const y = e.clientY - bounds.top;
-      const xPct = (x / bounds.width) * 100;
-      const yPct = (y / bounds.height) * 100;
+      const scaledX = e.clientX - bounds.left;
+      const scaledY = e.clientY - bounds.top;
+      
+      const unscaledX = scaledX / pdfScale;
+      const unscaledY = scaledY / pdfScale;
+
+      const xPct = (scaledX / bounds.width) * 100;
+      const yPct = (scaledY / bounds.height) * 100;
 
       const newFields = [];
       for (let i = 1; i <= totalPages; i++) {
@@ -579,8 +583,8 @@ export default function Upload() {
           type: fieldType,
           signerId: activeSignerId,
           page: i,
-          x: x,
-          y: y,
+          x: unscaledX,
+          y: unscaledY,
           xPct: xPct,
           yPct: yPct,
           width: 100,
@@ -598,19 +602,22 @@ export default function Upload() {
       const dropzone = document.getElementById(`pdf-dropzone-${pageIndex}`);
       if (!dropzone) return;
       const bounds = dropzone.getBoundingClientRect();
-      const x = e.clientX - bounds.left;
-      const y = e.clientY - bounds.top;
+      const scaledX = e.clientX - bounds.left;
+      const scaledY = e.clientY - bounds.top;
 
-      const xPct = (x / bounds.width) * 100;
-      const yPct = (y / bounds.height) * 100;
+      const unscaledX = scaledX / pdfScale;
+      const unscaledY = scaledY / pdfScale;
+
+      const xPct = (scaledX / bounds.width) * 100;
+      const yPct = (scaledY / bounds.height) * 100;
 
       const newField = {
         id: `field_${Date.now()}`,
         type: fieldType,
         signerId: activeSignerId,
         page: pageIndex,
-        x: x,
-        y: y,
+        x: unscaledX,
+        y: unscaledY,
         xPct: xPct,
         yPct: yPct,
         width: fieldType === 'Text Box' ? 150 : 100,
@@ -630,8 +637,12 @@ export default function Upload() {
     const dropzone = document.getElementById(`pdf-dropzone-${targetField.page}`);
     if (!dropzone) return;
     const bounds = dropzone.getBoundingClientRect();
-    const xPct = (newX / bounds.width) * 100;
-    const yPct = (newY / bounds.height) * 100;
+    
+    const unscaledWidth = bounds.width / pdfScale;
+    const unscaledHeight = bounds.height / pdfScale;
+    
+    const xPct = (newX / unscaledWidth) * 100;
+    const yPct = (newY / unscaledHeight) * 100;
 
     if (targetField.type === 'Initial') {
       setFields(prev => prev.map(f => (f.type === 'Initial' && f.signerId === targetField.signerId) ? { ...f, x: newX, y: newY, xPct: xPct, yPct: yPct } : f));
