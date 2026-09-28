@@ -327,31 +327,7 @@ export default function Upload() {
       setIsLoading(false);
     }
   };
-  const handleUseTemplateSubmit = async () => {
-    if (!selectedTemplateId) return toast.error('Please select a template first.');
-
-    setIsLoading(true);
-    try {
-      const res = await api.post(`/api/templates/${selectedTemplateId}/use`);
-      const { document: newDoc, signers: templateSigners, fields: templateFields } = res.data;
-
-      setDocumentId(newDoc.id);
-      setExistingFile({ url: newDoc.fileUrl, fileName: newDoc.fileName });
-      setFile(null);
-
-      if (templateSigners?.length) setSigners(templateSigners);
-      if (templateFields?.length) setFields(templateFields);
-
-      toast.success(`Started from "${newDoc.templateName || 'template'}".`);
-      setCurrentStep(2);
-    } catch (error) {
-      toast.error(error.response?.data?.error || 'Could not start a document from this template.');
-      console.error(error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  
 
    const handleUseTemplateSubmit = async () => {
     if (!selectedTemplateId) return toast.error('Please select a template first.');
