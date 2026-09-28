@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
-import { FolderOpen, LayoutTemplate, FileSignature, Search, ArrowRight, Download, Clock, CheckCircle2 } from 'lucide-react';
+import { FolderOpen, LayoutTemplate, FileSignature, Search, ArrowRight, Download, Clock, CheckCircle2, UploadCloud } from 'lucide-react';
 
 const TABS = [
   { key: 'templates', label: 'My Templates' },
@@ -69,6 +69,9 @@ export default function Folder() {
   const [templates, setTemplates] = useState([]);
   const [templatesLoading, setTemplatesLoading] = useState(true);
   const [usingTemplateId, setUsingTemplateId] = useState(null);
+  
+  const fileInputRef = useRef(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const [signedDocuments, setSignedDocuments] = useState([]);
   const [signedLoading, setSignedLoading] = useState(true);
@@ -121,6 +124,35 @@ export default function Folder() {
     }
   };
 
+  const handleUploadTemplate = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== 'application/pdf') {
+      toast.error('Only PDF files are allowed.');
+      return;
+    }
+
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append('pdf_file', file);
+
+    try {
+      await api.post('/api/templates/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      toast.success('Template uploaded successfully.');
+      fetchTemplates(); // Refresh the list
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to upload template.');
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''; // Reset input
+      }
+    }
+  };
+
   const handleDownloadCertificate = async (document) => {
     setDownloadingId(document.id);
     try {
@@ -151,31 +183,52 @@ export default function Folder() {
       <div className="max-w-[1000px] mx-auto px-6 py-8">
         <div className="mb-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">Your library</p>
-          <h1 className="text-2xl font-semibold text-slate-900">Folder</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">Templates</h1>
           <p className="text-sm text-slate-500 mt-1 max-w-md">
             Reusable templates and everything you've signed, in one place.
           </p>
         </div>
 
-        <div className="flex gap-6 border-b border-slate-200 mb-5">
-          {TABS.map((tab) => {
-            const isActive = activeTab === tab.key;
-            const count = tab.key === 'templates' ? templates.length : signedDocuments.length;
-            return (
+        <div className="flex items-center justify-between border-b border-slate-200 mb-5">
+          <div className="flex gap-6">
+            {TABS.map((tab) => {
+              const isActive = activeTab === tab.key;
+              const count = tab.key === 'templates' ? templates.length : signedDocuments.length;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex items-center gap-2 pb-3 text-sm font-semibold border-b-2 transition-colors ${
+                    isActive ? 'text-slate-900 border-slate-900' : 'text-slate-400 border-transparent hover:text-slate-600'
+                  }`}
+                >
+                  {tab.label}
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          
+          {activeTab === 'templates' && (
+            <div className="pb-3">
+              <input 
+                type="file" 
+                accept="application/pdf" 
+                hidden 
+                ref={fileInputRef} 
+                onChange={handleUploadTemplate} 
+              />
               <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-2 pb-3 text-sm font-semibold border-b-2 transition-colors ${
-                  isActive ? 'text-slate-900 border-slate-900' : 'text-slate-400 border-transparent hover:text-slate-600'
-                }`}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors disabled:opacity-50"
               >
-                {tab.label}
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                  {count}
-                </span>
+                {isUploading ? 'Uploading...' : 'Upload Template'} <UploadCloud className="h-4 w-4" />
               </button>
-            );
-          })}
+            </div>
+          )}
         </div>
 
         <div className="relative mb-4 max-w-xs">

@@ -59,3 +59,9 @@ A document will move strictly through these statuses in the database:
 * **Database:** PostgreSQL (ideal for relational state mapping and JSONB fields).
 * **Storage:** AWS S3 (or MinIO for local development) for secure object storage.
 * **Cryptography:** OpenSSL or equivalent libraries for PKI hashing and certificate generation.
+
+---
+**7. Clone this repository**
+```
+git clone https://github.com/Clovie8/Multi-level-digital-signature-platform.git
+```

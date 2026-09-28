@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import api from '../../lib/api';
-import toast from 'react-hot-toast';
-import { User, Mail, Lock, Loader2 } from 'lucide-react';
+import { toast } from 'react-hot-toast';
+import { User, Mail, Lock, Loader2, Eye, EyeOff } from 'lucide-react';
 
 export default function Settings() {
   const { user } = useOutletContext();
@@ -12,6 +12,8 @@ export default function Settings() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
 
   useEffect(() => {
     if (user?.name) setName(user.name);
@@ -37,6 +39,11 @@ export default function Settings() {
   const handlePasswordSubmit = async (e) => {
     e.preventDefault();
     if (!currentPassword || !newPassword) return toast.error('Both password fields are required.');
+
+    // Password validation: new with current password
+    if (currentPassword === newPassword) {
+      return toast.error("Your new password cannot be the same as your current password.");
+    }
 
     const hasLength = newPassword.length >= 8;
     const hasNumber = /\d/.test(newPassword);
@@ -122,11 +129,18 @@ export default function Settings() {
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                     <input
-                      type="password"
+                      type={showCurrentPassword ? "text" : "password"}
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900"
+                      className="w-full pl-9 pr-10 py-2 text-sm border border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
                   </div>
                 </div>
                 <div>
@@ -134,11 +148,18 @@ export default function Settings() {
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                     <input
-                      type="password"
+                      type={showNewPassword ? "text" : "password"}
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900"
+                      className="w-full pl-9 pr-10 py-2 text-sm border border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
                   </div>
                   <p className="text-xs text-slate-400 mt-1">At least 8 characters, with a number and a special character.</p>
                 </div>
