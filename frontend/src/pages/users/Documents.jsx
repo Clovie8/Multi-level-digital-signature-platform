@@ -1,12 +1,14 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import MoveModal from '../../components/folders/MoveModal';
+import ShareModal from '../../components/folders/ShareModal';
+import ContextMenu from '../../components/folders/ContextMenu';
+import { DndContext, useDraggable, useDroppable, pointerWithin, MouseSensor, TouchSensor, useSensor, useSensors, DragOverlay, KeyboardSensor } from '@dnd-kit/core';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
-import {
-  FileSignature, RotateCcw, Layers, Ban, Clock, CheckCircle2,
-  AlertTriangle, UploadCloud, X, Plus, Search,
-  Eye, Bell, Download, Pencil, History, MoreVertical, Info
-} from 'lucide-react';
+import { formatDistanceToNow, isAfter } from 'date-fns';
+import Select from '../../components/ui/Select';
+import { FileSignature, RotateCcw, Layers, Ban, Clock, CheckCircle2, AlertTriangle, UploadCloud, X, Plus, Search, Eye, Bell, Download, Pencil, History, MoreVertical, Info, Loader2, LayoutGrid, List, Folder, Trash2, HomeIcon, LayoutTemplate, ArrowRight } from 'lucide-react';
 
 const STATUS_META = {
   draft: { label: 'Draft', dot: 'bg-slate-400', text: 'text-slate-600', bg: 'bg-slate-100' },
@@ -56,6 +58,55 @@ function ConfirmModal({ isOpen, title, message, confirmText, isDanger, onConfirm
             }`}
           >
             {confirmText || 'Confirm'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VoidModal({ isOpen, title, message, isDraft, onConfirm, onCancel }) {
+  const [reason, setReason] = useState('');
+  
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4 animate-in fade-in" onClick={onCancel}>
+      <div 
+        className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-2">{title}</h3>
+          <p className="text-sm text-slate-500 leading-relaxed mb-4">{message}</p>
+          
+          {!isDraft && (
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1">Reason for voiding</label>
+              <textarea
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                maxLength={500}
+                rows={3}
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:ring-2 focus:ring-red-500 resize-none"
+                placeholder="Explain why you are voiding this document..."
+              />
+            </div>
+          )}
+        </div>
+        <div className="bg-slate-50 border-t border-slate-100 p-4 flex justify-end gap-3">
+          <button onClick={onCancel} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200/50 rounded-md transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={() => {
+              onConfirm(isDraft ? null : reason);
+              setReason('');
+            }}
+            disabled={!isDraft && !reason.trim()}
+            className="px-4 py-2 text-sm font-medium bg-red-600 text-white hover:bg-red-700 focus:ring-2 focus:ring-red-600 focus:ring-offset-2 rounded-md transition-colors disabled:opacity-50"
+          >
+            {isDraft ? 'Delete' : 'Void Document'}
           </button>
         </div>
       </div>
@@ -185,7 +236,7 @@ function VersionHistoryModal({ documentId, onClose, onOpenVersion }) {
   );
 }
 
-function RowActions({ document, onView, onVoided }) {
+function RowActions({ document, currentUser, onView, onVoided, onContextMenuAction }) {
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [openUpward, setOpenUpward] = useState(false);
@@ -230,9 +281,21 @@ function RowActions({ document, onView, onVoided }) {
     setIsDownloading(true);
     try {
       const res = await api.get(`/api/documents/${document.id}/download`);
-      window.open(res.data.url, '_blank', 'noopener,noreferrer');
+      const response = await fetch(res.data.url);
+      if (!response.ok) throw new Error('Failed to fetch file for download');
+      
+      const blob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      
+      const link = window.document.createElement('a');
+      link.href = objectUrl;
+      link.download = document.fileName || 'document.pdf';
+      window.document.body.appendChild(link);
+      link.click();
+      window.document.body.removeChild(link);
+      window.URL.revokeObjectURL(objectUrl);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not download this document.');
+      toast.error(err.message || 'Could not download this document.');
     } finally {
       setIsDownloading(false);
     }
@@ -248,14 +311,13 @@ function RowActions({ document, onView, onVoided }) {
       message: isDraft
         ? `Delete "${document.fileName}"? This permanently removes it — it will not show up anywhere and cannot be recovered.`
         : `Void "${document.fileName}"? This cannot be undone, and any remaining signers will be notified.`,
-      confirmText: isDraft ? 'Delete' : 'Void',
-      isDanger: true,
-      action: async () => {
+      isDraft,
+      action: async (reason) => {
         setConfirmDialog(null);
         setIsMenuOpen(false);
         setIsVoiding(true);
         try {
-          const res = await api.post(`/api/documents/${document.id}/void`);
+          const res = await api.post(`/api/documents/${document.id}/void`, { reason });
           toast.success(res.data.message);
           onVoided?.();
         } catch (err) {
@@ -273,11 +335,24 @@ function RowActions({ document, onView, onVoided }) {
   const VOIDABLE_STATUSES = ['draft', 'pending', 'in_progress', 'pending_review', 'declined'];
 
   const items = [];
-  if (document.status === 'draft') {
-    items.push({ key: 'edit', label: 'Edit', icon: Pencil, onClick: () => navigate(`/upload?edit=${document.id}`) });
-  } else {
-    items.push({ key: 'view', label: 'View', icon: Eye, onClick: () => onView(document.id) });
-  }
+    if (document.status === 'draft') {
+      items.push({ key: 'edit', label: 'Edit', icon: Pencil, onClick: () => navigate(`/upload?edit=${document.id}`) });
+    } else {
+      items.push({ key: 'details', label: 'Details', icon: Info, onClick: () => onView(document.id) });
+      const isInitiatorReviewing = document.status === 'pending_review' && document.initiatorId === currentUser?.id;
+      const isInitiatorDeclined = document.status === 'declined' && document.initiatorId === currentUser?.id;
+      
+      let reviewUrl;
+      if (isInitiatorReviewing) {
+        reviewUrl = `/review/${document.id}`;
+      } else if (isInitiatorDeclined) {
+        reviewUrl = `/review/${document.id}?mode=resume`;
+      } else {
+        reviewUrl = `/review/${document.id}?mode=preview`;
+      }
+      
+      items.push({ key: 'review', label: 'Review', icon: Eye, onClick: () => navigate(reviewUrl) });
+    }
   if (document.pendingSignerToken) {
     items.push({ 
       key: 'sign', 
@@ -290,12 +365,27 @@ function RowActions({ document, onView, onVoided }) {
     items.push({ key: 'remind', label: isSendingReminder ? 'Sending…' : 'Send reminder', icon: Bell, onClick: handleSendReminder, disabled: isSendingReminder });
   }
   if (document.status === 'completed') {
-    items.push({ key: 'download', label: isDownloading ? 'Downloading…' : 'Download', icon: Download, onClick: handleDownload, disabled: isDownloading });
+    items.push({ 
+      key: 'download', 
+      label: isDownloading ? 'Downloading...' : 'Download', 
+      icon: isDownloading ? Loader2 : Download, 
+      onClick: handleDownload, 
+      disabled: isDownloading,
+      spinIcon: isDownloading // we can add a custom spin class if we modify the render, but wait! Let's just use icon mapping
+    });
   }
   items.push({ key: 'versions', label: 'Version history', icon: History, onClick: () => setIsVersionModalOpen(true) });
   if (VOIDABLE_STATUSES.includes(document.status)) {
     const voidLabel = isVoiding ? (isDraft ? 'Deleting…' : 'Voiding…') : (isDraft ? 'Delete' : 'Void');
     items.push({ key: 'void', label: voidLabel, icon: Ban, onClick: handleVoid, disabled: isVoiding, danger: true });
+  }
+
+
+  items.push({ separator: true });
+  // items.push({ key: 'rename', label: 'Rename', icon: Pencil, onClick: () => { onContextMenuAction('rename', { ...document, type: 'document' }) } });
+  if (document.initiatorId === currentUser?.id) {
+    items.push({ key: 'move', label: 'Move to...', icon: Folder, onClick: () => { onContextMenuAction('move', { ...document, type: 'document' }) } });
+    // items.push({ key: 'delete', label: 'Delete', icon: Trash2, onClick: () => { onContextMenuAction('delete', { ...document, type: 'document' }) }, danger: true });
   }
 
   return (
@@ -312,13 +402,15 @@ function RowActions({ document, onView, onVoided }) {
 
         {isMenuOpen && (
           <div className={`absolute right-0 w-48 bg-white rounded-xl shadow-lg border border-slate-100 py-1 z-30 ${openUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
-            {items.map((item) => (
+            {items.map((item, idx) => item.separator ? (
+              <div key={`sep-${idx}`} className="h-px bg-slate-100 my-1 mx-2" />
+            ) : (
               <button
                 key={item.key}
                 className={item.danger ? dangerMenuItemCls : menuItemCls}
                 disabled={item.disabled}
-                onClick={() => { 
-                  if (item.key !== 'void') setIsMenuOpen(false); 
+                onClick={(e) => { 
+                  e.stopPropagation();
                   item.onClick(); 
                 }}
               >
@@ -330,12 +422,11 @@ function RowActions({ document, onView, onVoided }) {
         )}
       </div>
 
-      <ConfirmModal 
+      <VoidModal 
         isOpen={!!confirmDialog}
         title={confirmDialog?.title}
         message={confirmDialog?.message}
-        confirmText={confirmDialog?.confirmText}
-        isDanger={confirmDialog?.isDanger}
+        isDraft={confirmDialog?.isDraft}
         onConfirm={confirmDialog?.action}
         onCancel={() => setConfirmDialog(null)}
       />
@@ -351,13 +442,16 @@ function RowActions({ document, onView, onVoided }) {
   );
 }
 
-function DocumentTableRow({ document, currentUser, isChecked, onCheck, onOpen, onVoided }) {
+function DocumentTableRow({ document, currentUser, isChecked, onCheck, onOpen, onVoided, setContextMenu, onContextMenuAction }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `doc-${document.id}`,
+    data: { type: 'document', item: document }
+  });
+
   const isDeclined = document.status === 'declined';
 
   return (
-    <tr
-      onClick={() => onOpen(document.id)}
-      className={`cursor-pointer border-b border-slate-100 last:border-b-0 transition-colors ${isDeclined ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-slate-50'
+    <tr ref={setNodeRef} {...attributes} {...listeners} onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, item: { ...document, type: 'document' } }); }} onClick={() => onOpen(document.id)} className={`${isDragging ? 'opacity-50' : ''} cursor-pointer border-b border-slate-100 last:border-b-0 transition-colors ${isDeclined ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-slate-50'
         }`}
     >
       <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
@@ -411,18 +505,41 @@ function DocumentTableRow({ document, currentUser, isChecked, onCheck, onOpen, o
         <StatusPill status={document.status} />
       </td>
       <td className="px-3 py-2">
-        <RowActions document={document} onView={onOpen} onVoided={onVoided} />
+        <RowActions document={document} currentUser={currentUser} onView={onOpen} onVoided={onVoided} onContextMenuAction={onContextMenuAction} />
       </td>
     </tr>
   );
 }
 
-function StepsTimeline({ steps, documentCreatedAt, documentUpdatedAt }) {
+function StepsTimeline({ documentId, isInitiator, steps, documentCreatedAt, documentUpdatedAt, onRefresh }) {
+  const [editingStepId, setEditingStepId] = useState(null);
+  const [editForm, setEditForm] = useState({ name: '', email: '' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleEditSave = async (stepId) => {
+    if (!editForm.name.trim() || !editForm.email.trim()) {
+      toast.error('Name and email are required');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await api.put(`/api/documents/${documentId}/steps/${stepId}`, editForm);
+      toast.success('Signer updated successfully!');
+      setEditingStepId(null);
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to update signer');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-3 mt-4">
       {steps.map((step, index) => {
         const isSigned = step.status === 'completed';
         const isDeclined = step.status === 'declined';
+        const isPending = step.status === 'pending';
         
         // Calculate when it reached this user (either document start or previous step signed time)
         const reachedAt = step.reachedAt || (index === 0 ? documentCreatedAt : steps[index - 1]?.signedAt);
@@ -468,10 +585,59 @@ function StepsTimeline({ steps, documentCreatedAt, documentUpdatedAt }) {
                   }`}>
                     {isSigned ? 'Signed' : isDeclined ? 'Declined' : 'Pending'}
                   </span>
+                  {isInitiator && isPending && editingStepId !== step.id && (
+                    <button
+                      onClick={() => {
+                        setEditingStepId(step.id);
+                        setEditForm({ name: step.signerName, email: step.signerEmail });
+                      }}
+                      className="ml-2 text-slate-400 hover:text-teal-600 transition-colors"
+                      title="Edit Signer"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                  )}
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-slate-900">{step.signerName}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">{step.signerEmail}</p>
+                  {editingStepId === step.id ? (
+                    <div className="mt-2 space-y-2">
+                      <input 
+                        type="text" 
+                        value={editForm.name} 
+                        onChange={e => setEditForm({...editForm, name: e.target.value})} 
+                        className="w-full text-sm border border-slate-300 rounded px-2 py-1.5 focus:ring-teal-500 focus:border-teal-500"
+                        placeholder="Signer Name"
+                      />
+                      <input 
+                        type="email" 
+                        value={editForm.email} 
+                        onChange={e => setEditForm({...editForm, email: e.target.value})} 
+                        className="w-full text-sm border border-slate-300 rounded px-2 py-1.5 focus:ring-teal-500 focus:border-teal-500"
+                        placeholder="Signer Email"
+                      />
+                      <div className="flex gap-2 pt-1">
+                        <button 
+                          onClick={() => handleEditSave(step.id)} 
+                          disabled={isSubmitting} 
+                          className="text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded transition-colors disabled:opacity-50"
+                        >
+                          Save
+                        </button>
+                        <button 
+                          onClick={() => setEditingStepId(null)} 
+                          disabled={isSubmitting} 
+                          className="text-xs font-semibold bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-1.5 rounded transition-colors disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm font-bold text-slate-900">{step.signerName}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{step.signerEmail}</p>
+                    </>
+                  )}
                 </div>
               </div>
               
@@ -526,29 +692,17 @@ function StepsTimeline({ steps, documentCreatedAt, documentUpdatedAt }) {
   );
 }
 
-function ReviseModal({ document, onClose, onSubmitted }) {
-  const [file, setFile] = useState(null);
+function ReviseModal({ document, onClose }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
     try {
-      const formData = new FormData();
-      if (file) formData.append('pdf_file', file);
-      const res = await api.post(`/api/documents/${document.id}/revise`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      toast.success('Revision created. Every signer has been notified.');
-
-      if (res.data.isInitiatorFirst && res.data.redirectToken) {
-        navigate(`/sign/${res.data.redirectToken}`);
-      } else {
-        onSubmitted();
-      }
+      const res = await api.post(`/api/documents/${document.id}/revise`);
+      navigate(`/upload?edit=${res.data.documentId}`);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not create the revision.');
-    } finally {
+      toast.error(err.response?.data?.error || 'Could not create the revision draft.');
       setIsSubmitting(false);
     }
   };
@@ -563,24 +717,8 @@ function ReviseModal({ document, onClose, onSubmitted }) {
           </button>
         </div>
         <p className="text-sm text-slate-500 mb-5">
-          A new version of <span className="font-medium text-slate-700">{document.fileName}</span> will be created. Every signer starts over, including anyone who already signed.
+          A new draft version of <span className="font-medium text-slate-700">{document.fileName}</span> will be created. You will be taken to the editor where you can upload a new file, change signers, or adjust fields before sending.
         </p>
-
-        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-          Corrected file (optional)
-        </label>
-        <div className="relative border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-slate-400 transition-colors">
-          <input
-            type="file"
-            accept="application/pdf"
-            onChange={(e) => setFile(e.target.files[0] || null)}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-          />
-          <UploadCloud className="h-6 w-6 mx-auto mb-2 text-slate-400" />
-          <p className="text-xs text-slate-600 font-medium">
-            {file ? file.name : 'Upload the corrected PDF, or leave blank to reuse the original file'}
-          </p>
-        </div>
 
         <div className="flex justify-end gap-3 mt-6">
           <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">
@@ -622,7 +760,7 @@ function ReviewPanel({ document, onRefresh }) {
 
   return (
     <div className="mt-5">
-      <StepsTimeline steps={document.steps} documentCreatedAt={document.createdAt} />
+      <StepsTimeline documentId={document.id} isInitiator={true} steps={document.steps} documentCreatedAt={document.createdAt} onRefresh={onRefresh} />
 
       <div className="mt-5 border border-teal-200 bg-teal-50 rounded-xl p-4">
         <div className="flex items-center gap-2.5 mb-2">
@@ -674,33 +812,26 @@ function ReviewPanel({ document, onRefresh }) {
 }
 
 function DeclineResolutionPanel({ document, onRefresh }) {
+  const navigate = useNavigate();
   const [isResuming, setIsResuming] = useState(false);
   const [isVoiding, setIsVoiding] = useState(false);
   const [isReviseModalOpen, setIsReviseModalOpen] = useState(false);
+  const [voidModalOpen, setVoidModalOpen] = useState(false);
 
   const declinedStep = document.steps.find((s) => s.status === 'declined');
   const resumeCount = document.resumeCount;
   const resumeLimitReached = resumeCount >= 3;
   const declineNumber = resumeCount + 1;
 
-  const handleResume = async () => {
-    setIsResuming(true);
-    try {
-      await api.post(`/api/documents/${document.id}/resume`);
-      toast.success(`${declinedStep?.signerName || 'The signer'} has been re-notified.`);
-      onRefresh();
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not resume this document.');
-    } finally {
-      setIsResuming(false);
-    }
+  const handleResume = () => {
+    navigate(`/review/${document.id}?mode=resume`);
   };
 
-  const handleVoid = async () => {
-    if (!window.confirm(`Void "${document.fileName}"? This cannot be undone, and any remaining signers will be notified.`)) return;
+  const handleConfirmVoid = async (reason) => {
+    setVoidModalOpen(false);
     setIsVoiding(true);
     try {
-      const res = await api.post(`/api/documents/${document.id}/void`);
+      const res = await api.post(`/api/documents/${document.id}/void`, { reason });
       toast.success(res.data.message);
       onRefresh();
     } catch (err) {
@@ -740,7 +871,7 @@ function DeclineResolutionPanel({ document, onRefresh }) {
         </div>
       )}
 
-      <StepsTimeline steps={document.steps} documentCreatedAt={document.createdAt} />
+      <StepsTimeline documentId={document.id} isInitiator={true} steps={document.steps} documentCreatedAt={document.createdAt} onRefresh={onRefresh} />
 
       <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mt-6 mb-3">
         {resumeLimitReached ? 'Choose one' : 'Choose how to proceed'}
@@ -787,7 +918,7 @@ function DeclineResolutionPanel({ document, onRefresh }) {
       {resumeLimitReached && (
         <div className="flex justify-end mt-3">
           <button
-            onClick={handleVoid}
+            onClick={() => setVoidModalOpen(true)}
             disabled={isVoiding}
             className="flex items-center gap-1.5 text-xs font-semibold text-red-600 hover:text-red-700 transition-colors disabled:opacity-50"
           >
@@ -801,25 +932,151 @@ function DeclineResolutionPanel({ document, onRefresh }) {
         <ReviseModal
           document={document}
           onClose={() => setIsReviseModalOpen(false)}
-          onSubmitted={() => { setIsReviseModalOpen(false); onRefresh(); }}
         />
       )}
+
+      <VoidModal 
+        isOpen={voidModalOpen}
+        title="Void Document"
+        message={`Void "${document.fileName}"? This cannot be undone, and any remaining signers will be notified.`}
+        isDraft={false}
+        onConfirm={handleConfirmVoid}
+        onCancel={() => setVoidModalOpen(false)}
+      />
     </div>
   );
 }
 
 const TABS = [
   { key: 'all', label: 'All documents' },
-  { key: 'sent_by_you', label: 'Documents by you' },
-  { key: 'signed_by_me', label: 'Signed by me' },
+  { key: 'templates', label: 'Templates' },
   { key: 'needs_decision', label: 'Needs your decision' },
 ];
 
 const STATUS_FILTER_OPTIONS = ['all', ...Object.keys(STATUS_META)];
 
+function TemplateTableRow({ template, isChecked, onCheck, onUse, setContextMenu, isUsing }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `template-${template.id}`,
+    data: { type: 'template', item: template }
+  });
+
+  return (
+    <tr ref={setNodeRef} {...attributes} {...listeners} onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, item: { ...template, type: 'template' } }); }} className={`${isDragging ? 'opacity-50' : ''} hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-b-0 transition-colors`}>
+      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+        <input type="checkbox" checked={isChecked} onChange={() => onCheck(template.id)} className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900" />
+      </td>
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+            <LayoutTemplate className="h-4 w-4 text-slate-500" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-slate-900 truncate">{template.name}</p>
+            <p className="text-xs text-slate-400 mt-0.5 truncate">
+              {template.signerCount} signer{template.signerCount !== 1 ? 's' : ''} · Used {template.usageCount}×
+            </p>
+          </div>
+        </div>
+      </td>
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-xs font-semibold text-slate-900 truncate">{template.creatorName || 'Unknown'}</span>
+        </div>
+      </td>
+      <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">
+        {new Date(template.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+      </td>
+      <td className="px-3 py-2 text-xs text-slate-400">—</td>
+      <td className="px-3 py-2 text-xs text-slate-400">—</td>
+      <td className="px-3 py-2">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap bg-purple-50 text-purple-700">Template</span>
+      </td>
+      <td className="px-3 py-2">
+        <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+          {isUsing ? (
+            <div className="h-8 w-8 flex items-center justify-center">
+              <Loader2 className="h-5 w-5 text-slate-900 animate-spin" />
+            </div>
+          ) : (
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const rect = e.currentTarget.getBoundingClientRect();
+                setContextMenu({ x: rect.right - 150, y: rect.bottom, item: { ...template, type: 'template' } });
+              }}
+              className="h-8 w-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            >
+              <MoreVertical className="h-5 w-5" />
+            </button>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+
+function FolderTableRow({ folder, isChecked, onCheck, onOpen, setContextMenu }) {
+  const { attributes, listeners, setNodeRef: setDraggableRef, isDragging } = useDraggable({
+    id: `folder-${folder.id}`,
+    data: { type: 'folder', item: folder }
+  });
+  const { isOver, setNodeRef: setDroppableRef } = useDroppable({
+    id: `folder-drop-${folder.id}`,
+    data: { type: 'folder', item: folder }
+  });
+
+  const setRefs = (node) => {
+    setDraggableRef(node);
+    setDroppableRef(node);
+  };
+
+  return (
+    <tr ref={setRefs} {...attributes} {...listeners} onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, item: { ...folder, type: 'folder' } }); }} onDoubleClick={() => onOpen(folder)} className={`hover:bg-slate-50/80 cursor-pointer transition-colors ${isDragging ? 'opacity-50' : ''} ${isOver ? 'bg-indigo-50 border-indigo-200 ring-2 ring-indigo-500 z-10' : ''}`}>
+      <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+        {/* Empty Checkbox Column */}
+      </td>
+      <td className="px-3 py-3">
+        <div className="flex items-center gap-3" onPointerDown={(e) => { e.stopPropagation(); onOpen(folder); }}>
+          <div className="flex-shrink-0 h-10 w-10 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600">
+            <Folder className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="font-medium text-sm text-slate-900">{folder.name}</div>
+            <div className="text-xs text-slate-500">Folder</div>
+          </div>
+        </div>
+      </td>
+      <td className="px-3 py-3 text-sm text-slate-500"></td>
+      <td className="px-3 py-3 text-sm text-slate-500"></td>
+      <td className="px-3 py-3 text-sm text-slate-500"></td>
+      <td className="px-3 py-3 text-sm text-slate-500"></td>
+      <td className="px-3 py-3 text-sm text-slate-500"></td>
+      <td className="px-3 py-3">
+        <div className="flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const rect = e.currentTarget.getBoundingClientRect();
+              setContextMenu({ x: rect.right - 150, y: rect.bottom, item: { ...folder, type: 'folder' } });
+            }}
+            className="h-8 w-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+          >
+            <MoreVertical className="h-5 w-5" />
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 export default function Documents() {
   const navigate = useNavigate();
   const [documents, setDocuments] = useState([]);
+  const [templates, setTemplates] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -830,6 +1087,263 @@ export default function Documents() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [checkedIds, setCheckedIds] = useState(new Set());
+  const [usingTemplateId, setUsingTemplateId] = useState(null);
+  const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
+  const fileInputRef = useRef(null);
+
+  
+  
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 10 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
+    useSensor(KeyboardSensor)
+  );
+
+  const handleDragStart = (event) => {
+    const { active } = event;
+    const item = active.data.current?.item;
+    const type = active.data.current?.type;
+
+    if (item) {
+      setActiveDragItem({ item, type });
+      if (checkedIds.has(item.id)) {
+        setIsDraggingSelection(true);
+      } else {
+        setIsDraggingSelection(false);
+      }
+    }
+  };
+
+  const handleDragEnd = async (event) => {
+    const { active, over } = event;
+    setActiveDragItem(null);
+    setIsDraggingSelection(false);
+
+    if (!over) return;
+
+    const sourceItem = active.data.current?.item;
+    const sourceType = active.data.current?.type;
+    const destFolder = over.data.current?.item;
+
+    if (!sourceItem || !destFolder) return;
+
+    if (sourceType === 'folder' && sourceItem.id === destFolder.id) return;
+
+    if (checkedIds.has(sourceItem.id) && checkedIds.size > 1) {
+      // Bulk move
+      const itemsToMove = Array.from(checkedIds).map(id => {
+        const doc = documents.find(d => d.id === id);
+        if (doc) return { id, type: 'document' };
+        const f = folders.find(f => f.id === id);
+        if (f) return { id, type: 'folder' };
+        const t = templates.find(t => t.id === id);
+        if (t) return { id, type: 'template' };
+        return null;
+      }).filter(Boolean);
+
+      try {
+        const res = await api.put('/api/folders/move-bulk', {
+          items: itemsToMove,
+          destinationFolderId: destFolder.id
+        });
+        
+        const results = res.data.results || [];
+        const failures = results.filter(r => !r.success);
+        
+        if (failures.length > 0) {
+          const code = failures[0].error;
+          let msg = code || 'Failed to move items';
+          if (code === 'NO_WRITE_ACCESS_DESTINATION') msg = 'You do not have privileges to move items into this folder.';
+          if (code === 'NO_WRITE_ACCESS_SOURCE') msg = 'You do not have privileges to move items out of their current folder.';
+          if (code === 'NOT_OWNER') msg = 'You do not have privileges to move this item.';
+          if (code === 'CIRCULAR_DEPENDENCY') msg = 'You cannot move a folder into its own subfolder.';
+          if (code === 'CANNOT_MOVE_TO_ROOT') msg = 'You cannot move a shared item to your root space.';
+          if (code === 'CANNOT_MOVE_OUT_OF_SHARED_SPACE') msg = 'You cannot move a shared item out of its shared folder hierarchy.';
+          toast.error(msg);
+        } else {
+          toast.success(`Successfully moved ${itemsToMove.length} item(s)`);
+        }
+        
+        clearChecked();
+        fetchDocuments();
+        fetchFolders();
+        fetchTemplates();
+      } catch (err) {
+        console.error(err);
+        const code = err.response?.data?.error;
+        let msg = code || 'Failed to move items';
+        if (code === 'NO_WRITE_ACCESS_DESTINATION') msg = 'You do not have privileges to move items into this folder.';
+        if (code === 'NO_WRITE_ACCESS_SOURCE') msg = 'You do not have privileges to move items out of their current folder.';
+        if (code === 'NOT_OWNER') msg = 'You do not have privileges to move this item.';
+        if (code === 'CIRCULAR_DEPENDENCY') msg = 'You cannot move a folder into its own subfolder.';
+        if (code === 'CANNOT_MOVE_TO_ROOT') msg = 'You cannot move a shared item to your root space.';
+        if (code === 'CANNOT_MOVE_OUT_OF_SHARED_SPACE') msg = 'You cannot move a shared item out of its shared folder hierarchy.';
+        toast.error(msg);
+      }
+    } else {
+      // Single move
+      try {
+        await api.put('/api/folders/move', {
+          itemId: sourceItem.id,
+          itemType: sourceType,
+          destinationFolderId: destFolder.id
+        });
+        fetchDocuments();
+        fetchFolders();
+        fetchTemplates();
+      } catch (err) {
+        console.error(err);
+        const code = err.response?.data?.error;
+        let msg = code || 'Failed to move item';
+        if (code === 'NO_WRITE_ACCESS_DESTINATION') msg = 'You do not have privileges to move items into this folder.';
+        if (code === 'NO_WRITE_ACCESS_SOURCE') msg = 'You do not have privileges to move items out of their current folder.';
+        if (code === 'NOT_OWNER') msg = 'You do not have privileges to move this item.';
+        if (code === 'CIRCULAR_DEPENDENCY') msg = 'You cannot move a folder into its own subfolder.';
+        if (code === 'CANNOT_MOVE_TO_ROOT') msg = 'You cannot move a shared item to your root space.';
+        if (code === 'CANNOT_MOVE_OUT_OF_SHARED_SPACE') msg = 'You cannot move a shared item out of its shared folder hierarchy.';
+        toast.error(msg);
+      }
+    }
+  };
+
+  
+  const [folderState, setFolderState] = useState({
+    all: null,
+    templates: null
+  });
+  
+  const currentFolderId = activeTab === 'templates' ? folderState.templates : folderState.all;
+  
+  const setCurrentFolderId = (id) => {
+    setFolderState(prev => ({
+      ...prev,
+      [activeTab === 'templates' ? 'templates' : 'all']: id
+    }));
+  };
+  const [newFolderName, setNewFolderName] = useState('');
+  const [isCreateFolderModalOpen, setIsCreateFolderModalOpen] = useState(false);
+  const [isRenameFolderModalOpen, setIsRenameFolderModalOpen] = useState(false);
+  const [folderToRename, setFolderToRename] = useState(null);
+  const [renameFolderName, setRenameFolderName] = useState('');
+  const [folders, setFolders] = useState([]);
+
+    const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
+  const [selectedItemsForMove, setSelectedItemsForMove] = useState([]);
+  const [contextMenu, setContextMenu] = useState(null);
+
+  const [activeDragItem, setActiveDragItem] = useState(null);
+  const [isDraggingSelection, setIsDraggingSelection] = useState(false);
+
+  
+  
+  
+  const handleDeleteFolder = async (folderId) => {
+    if (!window.confirm('Are you sure you want to delete this folder? All contents will be deleted.')) return;
+    try {
+      await api.delete('/api/folders/' + folderId);
+      setFolders(prev => prev.filter(f => f.id !== folderId));
+      if (currentFolderId === folderId) setCurrentFolderId(null);
+      toast.success('Folder deleted');
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to delete folder');
+    }
+  };
+
+  const handleRenameFolder = async (e) => {
+    e.preventDefault();
+    if (!renameFolderName.trim() || !folderToRename) return;
+
+    try {
+      const res = await api.put(`/api/folders/${folderToRename.id}/rename`, {
+        name: renameFolderName
+      });
+      
+      const updatedFolder = res.data.folder || res.data;
+      setFolders(prev => prev.map(f => f.id === updatedFolder.id ? updatedFolder : f));
+      setFolderToRename(null);
+      setRenameFolderName('');
+      setIsRenameFolderModalOpen(false);
+      toast.success('Folder renamed successfully');
+    } catch (error) {
+      console.error('Error renaming folder:', error);
+      toast.error(error.response?.data?.error || 'Failed to rename folder');
+    }
+  };
+
+  const handleCreateFolder = async (e) => {
+    e.preventDefault();
+    if (!newFolderName.trim()) return;
+
+    try {
+      const res = await api.post('/api/folders', {
+        name: newFolderName,
+        parentId: currentFolderId,
+        type: activeTab === 'templates' ? 'template' : 'document'
+      });
+      
+      const newFolder = res.data.folder || res.data;
+      setFolders(prev => [...prev, newFolder]);
+      setNewFolderName('');
+      setIsCreateFolderModalOpen(false);
+      toast.success('Folder created successfully');
+    } catch (error) {
+      console.error('Error creating folder:', error);
+      if (error.response?.data?.error === 'NO_WRITE_ACCESS') {
+        toast.error('You do not have privileges to create a folder inside this shared folder as a viewer.');
+      } else {
+        toast.error(error.response?.data?.error || 'Failed to create folder');
+      }
+    }
+  };
+
+  const handleOpenFolder = (folder) => {
+    setCurrentFolderId(folder.id);
+  };
+
+  const handleContextMenuAction = async (action, item) => {
+    if (action === 'open') {
+      if (item.type === 'folder') handleOpenFolder(item);
+      else setDetail(item);
+    } else if (action === 'review' && item.type === 'template') {
+      navigate(`/review/${item.id}?model=Template`);
+    } else if (action === 'use' && item.type === 'template') {
+      handleUseTemplate(item);
+    } else if (action === 'rename') {
+      if (item.type === 'folder') {
+        setFolderToRename(item);
+        setRenameFolderName(item.name);
+        setIsRenameFolderModalOpen(true);
+      } else {
+        toast.info('Document renaming coming soon');
+      }
+    } else if (action === 'move') {
+      setSelectedItemsForMove([item]);
+      setIsMoveModalOpen(true);
+    } else if (action === 'share' && item.type === 'folder') {
+      setShareFolderId(item.id);
+      setIsShareModalOpen(true);
+    } else if (action === 'delete') {
+      if (item.type === 'folder') {
+        handleDeleteFolder(item.id);
+      } else if (item.type === 'template') {
+        if (!window.confirm('Are you sure you want to delete this template?')) return;
+        try {
+          await api.delete('/api/templates/' + item.id);
+          setTemplates(prev => prev.filter(t => t.id !== item.id));
+          toast.success('Template deleted');
+        } catch (err) {
+          toast.error(err.response?.data?.error || 'Failed to delete template');
+        }
+      } else {
+        toast.info('Document deletion coming soon');
+      }
+    }
+    setContextMenu(null);
+  };
+
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [shareFolderId, setShareFolderId] = useState(null);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -838,6 +1352,17 @@ export default function Documents() {
     setCurrentPage(1);
   }, [activeTab, statusFilter, searchQuery]);
 
+
+  
+  const fetchFolders = async () => {
+    try {
+      const res = await api.get('/api/folders/all');
+      setFolders(res.data.folders || []);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to load folders');
+    }
+  };
 
   const fetchDocuments = useCallback(async () => {
     try {
@@ -848,8 +1373,18 @@ export default function Documents() {
       console.error(err);
       toast.error('Could not load your documents.');
       return [];
-    } finally {
-      setIsLoading(false);
+    }
+  }, []);
+
+  const fetchTemplates = useCallback(async () => {
+    try {
+      const res = await api.get('/api/templates');
+      setTemplates(res.data.templates || []);
+      return res.data.templates;
+    } catch (err) {
+      console.error(err);
+      toast.error('Could not load templates.');
+      return [];
     }
   }, []);
 
@@ -868,10 +1403,16 @@ export default function Documents() {
 
   useEffect(() => {
     const loadInitialDocuments = async () => {
-      await fetchDocuments();
+      setIsLoading(true);
+      await Promise.all([
+        fetchDocuments(),
+        fetchTemplates(),
+        fetchFolders()
+      ]);
+      setIsLoading(false);
     };
     loadInitialDocuments();
-  }, [fetchDocuments]);
+  }, [fetchDocuments, fetchTemplates]);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -897,42 +1438,119 @@ export default function Documents() {
 
   const handleRefresh = async () => {
     await fetchDocuments();
+    await fetchTemplates();
     if (selectedId) fetchDetail(selectedId);
   };
+
+  const handleUseTemplate = async (template) => {
+    setUsingTemplateId(template.id);
+    try {
+      const res = await api.post(`/api/templates/${template.id}/use`);
+      const { document: newDoc } = res.data;
+      toast.success(`Started from "${template.name}".`);
+      navigate(`/upload?edit=${newDoc.id}`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not start a document from this template.');
+    } finally {
+      setUsingTemplateId(null);
+    }
+  };
+
+  const handleUploadTemplate = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== 'application/pdf') {
+      toast.error('Only PDF files are allowed.');
+      return;
+    }
+
+    setIsUploadingTemplate(true);
+    const formData = new FormData();
+    formData.append('pdf_file', file);
+
+    try {
+      await api.post('/api/templates/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      toast.success('Template uploaded successfully.');
+      await fetchTemplates();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to upload template.');
+    } finally {
+      setIsUploadingTemplate(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''; 
+      }
+    }
+  };
+
+  const currentFolderDocs = useMemo(() => {
+    return documents.filter(d => {
+      const docFolderId = d.folder_id || d.folderId;
+      if (folderState.all) return docFolderId === folderState.all;
+      return !docFolderId;
+    });
+  }, [documents, folderState.all]);
+
+  const currentFolderTemplates = useMemo(() => {
+    return templates.filter(t => {
+      const tFolderId = t.folder_id || t.folderId;
+      if (folderState.templates) return tFolderId === folderState.templates;
+      return !tFolderId;
+    });
+  }, [templates, folderState.templates]);
 
   const needsDecisionCount = useMemo(
     () => documents.filter((d) => d.status === 'declined' || d.status === 'pending_review').length,
     [documents]
   );
 
-  const signedByMeCount = useMemo(
-    () => documents.filter((d) => d.hasSigned).length,
-    [documents]
-  );
-
-
-  const sentByYouCount = useMemo(
-    () => documents.filter((d) => !d.initiatorId || d.initiatorId === currentUser?.id).length,
-    [documents, currentUser]
-  );
-
   const filteredDocuments = useMemo(() => {
+    if (activeTab === 'templates') return []; // Handled separately
     return documents.filter((d) => {
+      if (activeTab !== 'needs_decision') {
+        const docFolderId = d.folder_id || d.folderId;
+        if (currentFolderId) {
+          if (docFolderId !== currentFolderId) return false;
+        } else {
+          if (docFolderId) return false;
+        }
+      }
+      
       if (activeTab === 'needs_decision' && !['declined', 'pending_review'].includes(d.status)) return false;
-      if (activeTab === 'sent_by_you' && d.initiatorId && d.initiatorId !== currentUser?.id) return false;
       if (statusFilter !== 'all' && d.status !== statusFilter) return false;
       if (searchQuery && !d.fileName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-      if (activeTab === 'signed_by_me' && !d.hasSigned) return false;
       return true;
     });
-  }, [documents, activeTab, statusFilter, searchQuery, currentUser]);
+  }, [documents, activeTab, statusFilter, searchQuery, currentUser, currentFolderId]);
+
+  const filteredTemplates = useMemo(() => {
+    if (activeTab !== 'templates') return [];
+    return templates.filter((t) => {
+      const tFolderId = t.folder_id || t.folderId;
+      if (currentFolderId) {
+        if (tFolderId !== currentFolderId) return false;
+      } else {
+        if (tFolderId) return false;
+      }
+      
+      if (searchQuery && !t.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      return true;
+    });
+  }, [templates, activeTab, searchQuery, currentFolderId]);
 
   const paginatedDocuments = useMemo(() => {
-  const startIndex = (currentPage - 1) * itemsPerPage;
+    const startIndex = (currentPage - 1) * itemsPerPage;
     return filteredDocuments.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredDocuments, currentPage, itemsPerPage]);
 
-  const totalPages = Math.ceil(filteredDocuments.length / itemsPerPage);
+  const paginatedTemplates = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredTemplates.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredTemplates, currentPage, itemsPerPage]);
+
+  const totalPages = Math.ceil((activeTab === 'templates' ? filteredTemplates.length : filteredDocuments.length) / itemsPerPage);
 
 
   const toggleCheck = (id) => {
@@ -944,8 +1562,9 @@ export default function Documents() {
   };
 
   const toggleCheckAll = () => {
+    const currentList = activeTab === 'templates' ? filteredTemplates : filteredDocuments;
     setCheckedIds((prev) =>
-      prev.size === filteredDocuments.length ? new Set() : new Set(filteredDocuments.map((d) => d.id))
+      prev.size === currentList.length ? new Set() : new Set(currentList.map((d) => d.id))
     );
   };
 
@@ -957,6 +1576,34 @@ export default function Documents() {
     () => documents.filter((d) => checkedIds.has(d.id)),
     [documents, checkedIds]
   );
+
+  
+  // Generate breadcrumbs
+  const breadcrumbs = useMemo(() => {
+    const crumbs = [];
+    let curr = folders.find(f => f.id === currentFolderId);
+    while (curr) {
+      crumbs.unshift(curr);
+      curr = folders.find(f => f.id === (curr.parent_folder_id || curr.parentId || curr.parent_id));
+    }
+    return crumbs;
+  }, [currentFolderId, folders]);
+
+  const currentLevelFolders = useMemo(() => {
+    if (activeTab === 'needs_decision') return [];
+    
+    return folders.filter(f => {
+      const isCorrectLevel = currentFolderId 
+        ? (f.parent_folder_id === currentFolderId || f.parentId === currentFolderId || f.parent_id === currentFolderId) 
+        : (!f.parent_folder_id && !f.parentId && !f.parent_id);
+        
+      if (!isCorrectLevel) return false;
+      
+      const expectedType = activeTab === 'templates' ? 'template' : 'document';
+      return f.type === expectedType;
+    });
+  }, [folders, currentFolderId, activeTab]);
+
   const canBulkDownload = checkedDocuments.length > 0 && checkedDocuments.every((d) => d.status === 'completed');
   const canBulkRemind = checkedDocuments.length > 0 && checkedDocuments.every((d) => ['pending', 'in_progress'].includes(d.status));
 
@@ -971,23 +1618,44 @@ export default function Documents() {
               Everything you've sent for signature  including declines, resumes, and revisions.
             </p>
           </div>
-          <button
-            onClick={() => navigate('/upload')}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 text-white text-sm font-semibold rounded-md hover:bg-slate-800 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            New document
-          </button>
+          <div className="flex items-center gap-2">
+            {activeTab === 'all' && (
+              <button
+                onClick={() => navigate('/upload')}
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 text-white text-sm font-semibold rounded-md hover:bg-slate-800 transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+                New document
+              </button>
+            )}
+            {activeTab === 'templates' && (
+              <>
+                <input 
+                  type="file" 
+                  accept="application/pdf" 
+                  hidden 
+                  ref={fileInputRef} 
+                  onChange={handleUploadTemplate} 
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploadingTemplate}
+                  className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-100 text-slate-700 text-sm font-semibold rounded-md hover:bg-slate-200 transition-colors disabled:opacity-50"
+                >
+                  <UploadCloud className="h-4 w-4" />
+                  {isUploadingTemplate ? 'Uploading...' : 'Upload Template'}
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         <div className="flex gap-6 border-b border-slate-200 mb-5">
           {TABS.map((tab) => {
             const count = tab.key === 'all'
-              ? documents.length
-              : tab.key === 'sent_by_you'
-                ? sentByYouCount
-                : tab.key === 'signed_by_me'
-                ? signedByMeCount
+              ? currentFolderDocs.length
+              : tab.key === 'templates'
+                ? currentFolderTemplates.length
                 : needsDecisionCount;
             const isActive = activeTab === tab.key;
             return (
@@ -1007,27 +1675,51 @@ export default function Documents() {
           })}
         </div>
 
+        
+        {activeTab !== 'needs_decision' && (
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <button onClick={() => setCurrentFolderId(null)} className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${!currentFolderId ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}><HomeIcon className="h-4 w-4" /> Root</button>
+              {breadcrumbs.map((crumb, index) => (
+                <React.Fragment key={crumb.id}>
+                  <span className="text-slate-400">/</span>
+                  <button 
+                    onClick={() => setCurrentFolderId(crumb.id)} 
+                    className={`flex items-center gap-0.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${index === breadcrumbs.length - 1 ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  >
+                    <Folder className="h-4 w-4" />
+                    {crumb.name}
+                  </button>
+                </React.Fragment>
+              ))}
+            </div>
+            <button onClick={() => setIsCreateFolderModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors text-sm font-medium">
+              <Folder className="h-4 w-4" /> New Folder
+            </button>
+          </div>
+        )}
+
         <div className="flex gap-3 mb-4 flex-wrap items-center">
           <div className="relative flex-1 min-w-[200px] max-w-xs">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search documents..."
+              placeholder={activeTab === 'templates' ? 'Search templates...' : 'Search documents...'}
               className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900"
             />
           </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="text-sm font-medium text-slate-700 border border-slate-200 rounded-md py-2 px-3 focus:ring-slate-900 focus:border-slate-900"
-          >
-            {STATUS_FILTER_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {s === 'all' ? 'Status: All' : STATUS_META[s].label}
-              </option>
-            ))}
-          </select>
+          {activeTab !== 'templates' && (
+            <Select
+              value={statusFilter}
+              onChange={(val) => setStatusFilter(val)}
+              options={STATUS_FILTER_OPTIONS.map((s) => ({
+                value: s,
+                label: s === 'all' ? 'Status: All' : STATUS_META[s].label
+              }))}
+              className="w-48"
+            />
+          )}
         </div>
 
         {checkedIds.size > 0 && (
@@ -1049,20 +1741,21 @@ export default function Documents() {
           </div>
         )}
 
+        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-16 text-slate-400">
               <Clock className="h-6 w-6 mb-2 animate-pulse" />
-              <p className="text-sm">Loading documents…</p>
+              <p className="text-sm">Loading…</p>
             </div>
-          ) : filteredDocuments.length === 0 ? (
+          ) : (filteredDocuments.length === 0 && filteredTemplates.length === 0) && currentLevelFolders.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center px-6">
               <FileSignature className="h-10 w-10 text-slate-300 mb-3" />
-              <h2 className="text-sm font-semibold text-slate-900">No documents found</h2>
+              <h2 className="text-sm font-semibold text-slate-900">
+                {activeTab === 'templates' ? 'No templates found' : 'No documents found'}
+              </h2>
               <p className="text-xs text-slate-500 mt-1 max-w-sm">
-                {documents.length === 0
-                  ? 'Documents you send for signature will show up here.'
-                  : 'Try a different search or filter.'}
+                Try a different search or filter.
               </p>
             </div>
           ) : (
@@ -1084,12 +1777,12 @@ export default function Documents() {
                     <th className="px-3 py-1.5">
                       <input
                         type="checkbox"
-                        checked={checkedIds.size > 0 && checkedIds.size === filteredDocuments.length}
+                        checked={checkedIds.size > 0 && checkedIds.size === (activeTab === 'templates' ? filteredTemplates.length : filteredDocuments.length)}
                         onChange={toggleCheckAll}
                         className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
                       />
                     </th>
-                    <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Document</th>
+                    <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">{activeTab === 'templates' ? 'Template' : 'Document'}</th>
                     <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Initiator</th>
                     <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Date</th>
                     <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Progress</th>
@@ -1099,17 +1792,45 @@ export default function Documents() {
                   </tr>
                 </thead>
                 <tbody>
-                   {paginatedDocuments.map((document) => (
-                    <DocumentTableRow
-                      key={document.id}
-                      document={document}
-                      currentUser={currentUser}
-                      isChecked={checkedIds.has(document.id)}
-                      onCheck={toggleCheck}
-                      onOpen={handleSelect}
-                      onVoided={handleRefresh}
-                    />
-                  ))}
+                   
+                    {currentLevelFolders.map(folder => (
+                      <FolderTableRow
+                        key={folder.id}
+                        folder={folder}
+                        isChecked={checkedIds.has(folder.id)}
+                        onCheck={toggleCheck}
+                        onOpen={handleOpenFolder}
+                        setContextMenu={setContextMenu}
+                      />
+                    ))}
+
+                    {activeTab === 'templates' ? (
+                      paginatedTemplates.map((template) => (
+                        <TemplateTableRow
+                          key={template.id}
+                          template={template}
+                          isChecked={checkedIds.has(template.id)}
+                          onCheck={toggleCheck}
+                          onUse={handleUseTemplate}
+                          setContextMenu={setContextMenu}
+                          isUsing={usingTemplateId === template.id}
+                        />
+                      ))
+                    ) : (
+                      paginatedDocuments.map((document) => (
+                        <DocumentTableRow
+                          key={document.id}
+                          document={document}
+                          currentUser={currentUser}
+                          isChecked={checkedIds.has(document.id)}
+                          onCheck={toggleCheck}
+                          onOpen={handleSelect}
+                          onVoided={handleRefresh}
+                          setContextMenu={setContextMenu}
+                          onContextMenuAction={handleContextMenuAction}
+                        />
+                      ))
+                    )}
                 </tbody>
               </table>
             </div>
@@ -1117,18 +1838,19 @@ export default function Documents() {
             <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-slate-500">Show</span>
-                <select
+                <Select
                   value={itemsPerPage}
-                  onChange={(e) => {
-                    setItemsPerPage(Number(e.target.value));
+                  onChange={(val) => {
+                    setItemsPerPage(Number(val));
                     setCurrentPage(1);
                   }}
-                  className="text-sm font-medium text-slate-700 border border-slate-200 rounded-md py-1 px-2 focus:ring-slate-900 focus:border-slate-900 outline-none cursor-pointer"
-                >
-                  <option value={10}>10</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
-                </select>
+                  options={[
+                    { value: 10, label: '10' },
+                    { value: 50, label: '50' },
+                    { value: 100, label: '100' }
+                  ]}
+                  className="w-20"
+                />
                 <span className="text-sm text-slate-500">entries</span>
               </div>
               <div className="flex items-center gap-2">
@@ -1155,6 +1877,7 @@ export default function Documents() {
 
           )}
         </div>
+        </DndContext>
       </div>
 
       <div
@@ -1198,7 +1921,7 @@ export default function Documents() {
                   <ReviewPanel document={detail} onRefresh={handleRefresh} />
                 ) : (
                   <div className="mt-5">
-                    <StepsTimeline steps={detail.steps} documentCreatedAt={detail.createdAt} documentUpdatedAt={detail.updatedAt} />
+                    <StepsTimeline documentId={detail.id} isInitiator={currentUser?.id === detail.initiatorId} steps={detail.steps} documentCreatedAt={detail.createdAt} documentUpdatedAt={detail.updatedAt} onRefresh={handleRefresh} />
                     {detail.status === 'completed' && (
                       <div className="flex items-center gap-2 mt-4 text-sm text-emerald-600">
                         <CheckCircle2 className="h-4 w-4" /> All signatures collected and sealed.
@@ -1211,6 +1934,47 @@ export default function Documents() {
           </div>
         )}
       </div>
+
+      {contextMenu && (
+        <ContextMenu x={contextMenu.x} y={contextMenu.y} item={contextMenu.item} onClose={() => setContextMenu(null)} onAction={handleContextMenuAction} />
+      )}
+      
+      {isCreateFolderModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4" onClick={() => setIsCreateFolderModalOpen(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+            <form onSubmit={handleCreateFolder} className="p-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">
+                {currentFolderId 
+                  ? `Create Subfolder inside ${folders.find(f => f.id === currentFolderId)?.name || 'Folder'}` 
+                  : 'Create New Folder'}
+              </h3>
+              <input autoFocus type="text" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} placeholder="Folder name" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md mb-4 focus:ring-2 focus:ring-slate-900" />
+              <div className="flex justify-end gap-3">
+                <button type="button" onClick={() => setIsCreateFolderModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition-colors">Cancel</button>
+                <button type="submit" disabled={!newFolderName.trim()} className="px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors disabled:opacity-50">Create</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {isRenameFolderModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4" onClick={() => setIsRenameFolderModalOpen(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+            <form onSubmit={handleRenameFolder} className="p-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">
+                Rename Folder
+              </h3>
+              <input autoFocus type="text" value={renameFolderName} onChange={e => setRenameFolderName(e.target.value)} placeholder="New folder name" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md mb-4 focus:ring-2 focus:ring-slate-900" />
+              <div className="flex justify-end gap-3">
+                <button type="button" onClick={() => setIsRenameFolderModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition-colors">Cancel</button>
+                <button type="submit" disabled={!renameFolderName.trim() || renameFolderName === folderToRename?.name} className="px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors disabled:opacity-50">Rename</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      <MoveModal isOpen={isMoveModalOpen} onClose={() => setIsMoveModalOpen(false)} selectedItems={selectedItemsForMove} currentFolderId={currentFolderId} activeTab={activeTab} onMoveSuccess={() => { clearChecked(); fetchDocuments(); fetchFolders(); fetchTemplates(); }} />
+      <ShareModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} folderId={shareFolderId} />
     </div>
   );
 }

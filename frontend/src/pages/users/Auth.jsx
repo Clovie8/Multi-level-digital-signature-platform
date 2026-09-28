@@ -71,7 +71,12 @@ const PasswordStrength = ({ password }) => {
 const OTPInput = ({ value, onChange, autoFocus }) => {
   const inputs = useRef([]);
   const length = 6;
-  const otpArray = value.padEnd(length, '').split('').slice(0, length);
+  const [otpArray, setOtpArray] = useState(Array(length).fill(''));
+
+  // Sync with parent if cleared
+  useEffect(() => {
+    if (!value) setOtpArray(Array(length).fill(''));
+  }, [value]);
 
   useEffect(() => {
     if (autoFocus && inputs.current[0]) {
@@ -79,15 +84,26 @@ const OTPInput = ({ value, onChange, autoFocus }) => {
     }
   }, [autoFocus]);
 
-  const handleChange = (e, index) => {
-    const val = e.target.value.replace(/[^0-9]/g, '');
-    if (!val) return;
+  const updateOtp = (newArray) => {
+    setOtpArray(newArray);
+    onChange({ target: { name: 'otp', value: newArray.join('') } });
+  };
 
-    const char = val[val.length - 1];
+  const handleChange = (e, index) => {
+    const val = e.target.value;
+    if (!val) {
+      const newOtpArray = [...otpArray];
+      newOtpArray[index] = '';
+      updateOtp(newOtpArray);
+      return;
+    }
+
+    const char = val.replace(/[^0-9]/g, '').slice(-1);
+    if (!char) return;
+
     const newOtpArray = [...otpArray];
     newOtpArray[index] = char;
-
-    onChange({ target: { name: 'otp', value: newOtpArray.join('') } });
+    updateOtp(newOtpArray);
 
     if (index < length - 1) {
       inputs.current[index + 1].focus();
@@ -95,18 +111,12 @@ const OTPInput = ({ value, onChange, autoFocus }) => {
   };
 
   const handleKeyDown = (e, index) => {
-    if (e.key === 'Backspace') {
+    if (e.key === 'Backspace' && !otpArray[index] && index > 0) {
       e.preventDefault();
       const newOtpArray = [...otpArray];
-
-      if (!newOtpArray[index] && index > 0) {
-        newOtpArray[index - 1] = '';
-        inputs.current[index - 1].focus();
-      } else {
-        newOtpArray[index] = '';
-      }
-
-      onChange({ target: { name: 'otp', value: newOtpArray.join('') } });
+      newOtpArray[index - 1] = '';
+      inputs.current[index - 1].focus();
+      updateOtp(newOtpArray);
     }
   };
 
@@ -142,7 +152,14 @@ const OTPInput = ({ value, onChange, autoFocus }) => {
 
 export default function Auth() {
   const navigate = useNavigate();
-  const [view, setView] = useState('login');
+  const [view, setView] = useState(() => {
+    return sessionStorage.getItem('authView') || 'login';
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem('authView', view);
+  }, [view]);
+
   const [isLoading, setIsLoading] = useState(false);
   const [isInviteFlow, setIsInviteFlow] = useState(false);
 
@@ -210,6 +227,12 @@ export default function Auth() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+
+    // Email validation
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      return toast.error("Please enter a valid email address format.");
+    }
+
     setIsLoading(true);
     try {
       const res = await api.post('/api/auth/login', {
@@ -238,6 +261,12 @@ export default function Auth() {
 
   const handleRegister = async (e) => {
     e.preventDefault();
+
+    // Email Validation 
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      return toast.error("Please enter a valid email address format.");
+    }
+
     const hasLength = formData.password.length >= 8;
     const hasNumber = /\d/.test(formData.password);
     const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(formData.password);
@@ -306,6 +335,12 @@ export default function Auth() {
 
   const handleForgot = async (e) => {
     e.preventDefault();
+
+    // Email validation
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      return toast.error("Please enter a valid email address format.");
+    }
+
     setIsLoading(true);
     try {
       await api.post('/api/auth/forgot-password', {
@@ -443,7 +478,7 @@ export default function Auth() {
                 <div className="space-y-3">
                   <button
                     type="button"
-                    onClick={() => window.location.href = 'http://localhost:5000/api/auth/microsoft'}
+                    onClick={() => window.location.href = `${import.meta.env.VITE_API_URL}/api/auth/microsoft`}
                     className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 border border-slate-200 rounded-md shadow-sm text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 transition-colors"
                   >
                     <svg className="h-4 w-4" viewBox="0 0 23 23" fill="none">
@@ -456,7 +491,7 @@ export default function Auth() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => window.location.href = 'http://localhost:5000/api/auth/google'}
+                    onClick={() => window.location.href = `${import.meta.env.VITE_API_URL}/api/auth/google`}
                     className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 border border-slate-200 rounded-md shadow-sm text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 transition-colors"
                   >
                     <svg className="h-4 w-4" viewBox="0 0 48 48">
@@ -481,7 +516,7 @@ export default function Auth() {
                 <form onSubmit={handleLogin} className="space-y-5">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Email Address</label>
-                    <InputField inputRef={loginEmailRef} icon={Mail} type="email" name="email" placeholder="admin@company.com" value={formData.email} onChange={handleChange} />
+                    <InputField inputRef={loginEmailRef} icon={Mail} type="email" name="email" placeholder="name@example.com" value={formData.email} onChange={handleChange} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Password</label>
@@ -505,7 +540,7 @@ export default function Auth() {
             {view === 'register' && (
               <form onSubmit={handleRegister} className="space-y-5">
                 <InputField inputRef={registerNameRef} icon={User} type="text" name="name" placeholder="Full Name" value={formData.name} onChange={handleChange} />
-                <InputField icon={Mail} type="email" name="email" placeholder="name@company.com" value={formData.email} onChange={handleChange} />
+                <InputField icon={Mail} type="email" name="email" placeholder="name@example.com" value={formData.email} onChange={handleChange} />
                 <div>
                   <InputField icon={Lock} type="password" name="password" placeholder="Create a strong password" value={formData.password} onChange={handleChange} isPassword />
                   <PasswordStrength password={formData.password} />
@@ -579,7 +614,7 @@ export default function Auth() {
                 <InputField inputRef={forgotEmailRef} icon={Mail} type="email" name="email" placeholder="Enter your registered email" value={formData.email} onChange={handleChange} />
                 <button disabled={isLoading} type="submit" className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 transition-all disabled:opacity-50">
                   {isLoading && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
-                  {isLoading ? 'Sending...' : 'Send Reset Link'}
+                  {isLoading ? 'Sending...' : 'Send Reset Token'}
                   {!isLoading && <ArrowRight className="ml-2 h-4 w-4" />}
                 </button>
 

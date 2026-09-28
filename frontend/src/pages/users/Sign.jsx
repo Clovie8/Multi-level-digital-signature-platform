@@ -20,29 +20,45 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 
 const PinInputBox = ({ pin, setPin }) => {
   const inputs = useRef([]);
+  const [pinArray, setPinArray] = useState(Array(4).fill(''));
+
+  useEffect(() => {
+    if (!pin) setPinArray(Array(4).fill(''));
+  }, [pin]);
+
+  const updatePin = (newArray) => {
+    setPinArray(newArray);
+    setPin(newArray.join(''));
+  };
 
   const handleChange = (e, index) => {
-    const val = e.target.value.replace(/\D/g, '');
-    if (!val) return;
+    const val = e.target.value;
+    if (!val) {
+      const newPin = [...pinArray];
+      newPin[index] = '';
+      updatePin(newPin);
+      return;
+    }
 
-    const newPin = pin.split('');
-    newPin[index] = val.slice(-1); 
-    setPin(newPin.join(''));
+    const char = val.replace(/\D/g, '').slice(-1);
+    if (!char) return;
 
-    if (index < 3 && val) {
+    const newPin = [...pinArray];
+    newPin[index] = char;
+    updatePin(newPin);
+
+    if (index < 3) {
       inputs.current[index + 1].focus();
     }
   };
 
   const handleKeyDown = (e, index) => {
-    if (e.key === 'Backspace') {
-      const newPin = pin.split('');
-      newPin[index] = '';
-      setPin(newPin.join(''));
-      
-      if (index > 0) {
-        inputs.current[index - 1].focus();
-      }
+    if (e.key === 'Backspace' && !pinArray[index] && index > 0) {
+      e.preventDefault();
+      const newPin = [...pinArray];
+      newPin[index - 1] = '';
+      inputs.current[index - 1].focus();
+      updatePin(newPin);
     }
   };
 
@@ -102,6 +118,7 @@ export default function Sign() {
   const sigPadRef = useRef(null);
   const padContainerRef = useRef(null);
   const [signMode, setSignMode] = useState('draw'); // 'draw' or 'type'
+  const [typeFontSize, setTypeFontSize] = useState(24);
   const [padSize, setPadSize] = useState({ width: 450, height: 160 });
   const isResizing = useRef(false);
 
@@ -155,7 +172,8 @@ export default function Sign() {
 
   // Decline State
   const [isDeclineModalOpen, setIsDeclineModalOpen] = useState(false);
-  const [declineReason, setDeclineReason] = useState('');
+  const [declineReasonRadio, setDeclineReasonRadio] = useState('');
+  const [declineReasonText, setDeclineReasonText] = useState('');
 
   // Fix Signature Canvas Scaling
   useEffect(() => {
@@ -222,6 +240,43 @@ export default function Sign() {
     return () => window.removeEventListener('resize', calculateScale);
   }, [documentFile]);
 
+  // Continuous Scroll Functions
+  const handleScroll = (e) => {
+    const container = e.target;
+    const scrollPosition = container.scrollTop;
+    
+    // Find the page currently most visible in the viewport
+    let bestPage = 1;
+    let minDistance = Infinity;
+
+    for (let i = 1; i <= totalPages; i++) {
+      const pageEl = document.getElementById(`page-container-${i}`);
+      if (pageEl) {
+        // Calculate the distance from the top of the container to the top of the page element
+        const distance = Math.abs(pageEl.offsetTop - scrollPosition);
+        if (distance < minDistance) {
+          minDistance = distance;
+          bestPage = i;
+        }
+      }
+    }
+
+    if (bestPage !== currentPage) {
+      setCurrentPage(bestPage);
+    }
+  };
+
+  const scrollToPage = (pageNum) => {
+    if (pageNum < 1 || pageNum > totalPages) return;
+    
+    const pageEl = document.getElementById(`page-container-${pageNum}`);
+    if (pageEl) {
+      pageEl.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      setCurrentPage(pageNum); // Fallback if element not found
+    }
+  };
+
   // 2. Handle Opening the Signature Modal
   const handleFieldClick = (field) => {
     setActiveFieldId(field.id);
@@ -229,16 +284,15 @@ export default function Sign() {
       setSignMode('draw');
       setIsModalOpen(true);
       if (!signatureText) setSignatureText(signerInfo?.name || '');
-    } else if (field.type === 'Text Box' || field.type === 'Name') {
+    } else if (field.type === 'Text Box' || field.type === 'Name' || field.type === 'Date') {
       setSignMode('type');
       setIsModalOpen(true);
-      if (!signatureText) setSignatureText(field.type === 'Name' ? (signerInfo?.name || '') : '');
-    } else if (field.type === 'Date') {
-      // Auto-fill dates instantly without opening a modal
-      setCompletedFields(prev => ({
-        ...prev,
-        [field.id]: new Date().toLocaleDateString()
-      }));
+      if (!signatureText) {
+        if (field.type === 'Name') setSignatureText(signerInfo?.name || '');
+        else if (field.type === 'Date') setSignatureText(new Date().toLocaleDateString());
+        else setSignatureText('');
+      }
+      setTypeFontSize(16);
     }
   };
 
@@ -315,7 +369,7 @@ export default function Sign() {
 
       } else if (signMode === 'type') {
         if (!signatureText.trim()) return toast.error('Please enter your text/name.');
-        applyToFields(`TYPED::${signatureText}`);
+        applyToFields(`TYPED::${typeFontSize}::${signatureText}`);
         setIsModalOpen(false);
 
       } else if (signMode === 'upload') {
@@ -489,8 +543,9 @@ export default function Sign() {
   };
 
   const handleConfirmDecline = async () => {
-    if (!declineReason.trim()) {
-      toast.error('Please explain why you are declining.');
+    const finalReason = declineReasonRadio === 'Other' ? declineReasonText : declineReasonRadio;
+    if (!finalReason.trim()) {
+      toast.error('Please provide a reason for declining.');
       return;
     }
 
@@ -498,7 +553,7 @@ export default function Sign() {
     setIsLoading(true);
     try {
       await api.post(`/api/documents/sign/${token}/decline`, {
-        reason: declineReason
+        reason: finalReason
       });
       toast.success('Document declined. The initiator has been notified.');
       navigate('/login');
@@ -607,7 +662,7 @@ export default function Sign() {
       </header>
 
       {/* PDF VIEWER AND CANVAS */}
-      <main className="flex-1 overflow-auto bg-slate-200/50 flex flex-col relative py-8">
+      <main className="flex-1 overflow-auto bg-slate-200/50 flex flex-col relative py-8" onScroll={handleScroll}>
 
          {/* --- FLOATING ACTION GUIDE --- */}
           <div className="lg:absolute lg:left-6 lg:top-8 w-[90%] max-w-sm lg:w-56 mx-auto lg:mx-0 bg-white border border-slate-200 rounded-lg shadow-md lg:shadow-lg z-20 overflow-hidden animate-in fade-in slide-in-from-left-4 mb-6 lg:mb-0 shrink-0">
@@ -631,7 +686,7 @@ export default function Sign() {
                   return (
                     <div 
                       key={pageNum} 
-                      onClick={() => setCurrentPage(pageNum)}
+                      onClick={() => scrollToPage(pageNum)}
                       className={`cursor-pointer p-1.5 border rounded-lg transition-all ${
                         currentPage === pageNum 
                           ? 'bg-blue-50 border-blue-300 shadow-sm' 
@@ -660,91 +715,100 @@ export default function Sign() {
 
         {/* Pagination Controls */}
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white px-4 py-2 rounded-full shadow-lg border border-slate-200 flex items-center space-x-4 z-20">
-          <button onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} disabled={currentPage <= 1} className="text-slate-400 hover:text-slate-900 disabled:opacity-50"><ChevronLeft className="h-5 w-5" /></button>
+          <button onClick={() => scrollToPage(Math.max(currentPage - 1, 1))} disabled={currentPage <= 1} className="text-slate-400 hover:text-slate-900 disabled:opacity-50"><ChevronLeft className="h-5 w-5" /></button>
           <span className="text-sm font-medium text-slate-600">Page {currentPage} of {totalPages}</span>
-          <button onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))} disabled={currentPage >= totalPages} className="text-slate-400 hover:text-slate-900 disabled:opacity-50"><ChevronRight className="h-5 w-5" /></button>
+          <button onClick={() => scrollToPage(Math.min(currentPage + 1, totalPages))} disabled={currentPage >= totalPages} className="text-slate-400 hover:text-slate-900 disabled:opacity-50"><ChevronRight className="h-5 w-5" /></button>
         </div>
 
 
 
-        {/* The PDF Container */}
-        <div 
-          ref={containerRef}
-          className="mx-auto flex justify-center" 
-          style={{ 
-            transform: `scale(${scale})`, 
-            transformOrigin: 'top center',
-            marginBottom: scale < 1 ? `-${(1 - scale) * 970}px` : '0' 
-          }}
-        > 
-          <div className="relative shadow-xl border border-slate-200 bg-white origin-top" style={{ width: '750px' }}>
-          <Document
-            file={documentFile} // URL from backend
-            onLoadSuccess={onDocumentLoadSuccess}
-            loading={<div className="p-20 text-slate-400 w-[750px] text-center">Decrypting document...</div>}
+        {/* The Actual Canvas Area */}
+        <div className="mx-auto" style={{ width: 750 * scale }}>
+          <div 
+            ref={containerRef}
+            style={{ 
+              transform: `scale(${scale})`, 
+              transformOrigin: 'top left'
+            }} 
+            className="w-[750px] flex flex-col"
           >
-            <Page
-              pageNumber={currentPage}
-              width={750}
-              renderTextLayer={false}
-              renderAnnotationLayer={false}
-            />
-          </Document>
+            <Document
+              file={documentFile} // URL from backend
+              onLoadSuccess={onDocumentLoadSuccess}
+              loading={<div className="p-20 text-slate-400 w-[750px] text-center">Decrypting document...</div>}
+            >
+              {Array.from(new Array(totalPages), (el, index) => {
+                const pageIndex = index + 1;
+                return (
+                  <div
+                    key={`page_${pageIndex}`}
+                    id={`page-container-${pageIndex}`}
+                    className="relative bg-white shadow-xl border border-slate-200 shrink-0 w-[750px] mb-6 last:mb-0"
+                  >
+                    <Page
+                      pageNumber={pageIndex}
+                      width={750}
+                      renderTextLayer={false}
+                      renderAnnotationLayer={false}
+                      loading={<div className="w-[750px] h-[970px] bg-slate-50 animate-pulse flex items-center justify-center text-slate-400">Loading page {pageIndex}...</div>}
+                    />
+                    
+                    {/* Render Assigned Fields overlaying this specific page */}
+                    {fields.filter(f => f.page === pageIndex).map((field) => {
+                      const isCompleted = !!completedFields[field.id];
 
-          {/* Render Assigned Fields overlaying the PDF */}
-          {fields.filter(f => f.page === currentPage).map((field) => {
-            const isCompleted = !!completedFields[field.id];
-
-            return (
-              <Rnd
-                key={field.id}
-                bounds="parent"
-                size={{ width: field.width || 120, height: field.height || 40 }}
-                position={{ x: field.x || 0, y: field.y || 0 }}
-                disableDragging={true}
-                enableResizing={{ top: true, right: true, bottom: true, left: true, topRight: true, bottomRight: true, bottomLeft: true, topLeft: true }}
-                onResizeStart={() => { isResizing.current = true; }}
-                onResizeStop={(e, direction, ref, delta, position) => {
-                  setTimeout(() => {
-                    isResizing.current = false;
-                  }, 150);
-                
-                  const newWidth = parseInt(ref.style.width);
-                  const newHeight = parseInt(ref.style.height);
-                  setFields(fields.map(f => f.id === field.id ? { ...f, width: newWidth, height: newHeight, x: position.x, y: position.y } : f));
-                  setTimeout(() => { isResizing.current = false; }, 200);
-                }}
-
-
-                className={`absolute cursor-pointer border-2 rounded shadow-sm transition-colors flex items-center justify-center z-30 hover:shadow-md
-                  ${isCompleted
-                    ? 'bg-blue-50 border-blue-400 text-blue-900'
-                    : 'bg-amber-100/90 border-amber-400 text-amber-800 animate-pulse hover:animate-none hover:bg-amber-200/90'
-                  }`}
-                onClick={() => { if (!isResizing.current) handleFieldClick(field); }}
-              >
-                {isCompleted ? (
-                  <span className={`text-lg font-medium overflow-hidden max-h-full w-full flex items-center justify-center ${field.type === 'Signature' || field.type === 'Initial' ? 'font-[cursive]' : ''}`}>
-                    {completedFields[field.id].startsWith('data:image/') ? (
-                      <img src={completedFields[field.id]} alt="Signature" className="max-h-full max-w-full object-contain pointer-events-none" />
-                    ) : (
-                      completedFields[field.id].replace('TYPED::', '')
-                    )}
-                  </span>
-                ) : (
-                  <span className="text-xs font-bold uppercase tracking-wider flex items-center pointer-events-none">
-                    {field.type === 'Signature' ? (
-                      <><PenTool className="h-3 w-3 mr-1" /> Sign Here</>
-                    ) : field.type === 'Initial' ? (
-                      <><PenTool className="h-3 w-3 mr-1" /> Paraph Here</>
-                    ) : (
-                      field.type
-                    )}
-                  </span>
-                )}
-              </Rnd>
-            );
-          })}
+                      return (
+                        <div
+                          key={field.id}
+                          style={{
+                            position: 'absolute',
+                            left: `${field.xPct}%`,
+                            top: `${field.yPct}%`,
+                            width: `${field.width || 120}px`,
+                            height: `${field.height || 40}px`,
+                          }}
+                          className={`cursor-pointer border-2 rounded shadow-sm transition-colors flex items-center justify-center z-30 hover:shadow-md
+                            ${isCompleted
+                              ? 'bg-slate-50 border-slate-200 text-black hover:border-slate-300'
+                              : 'bg-amber-100/90 border-amber-400 text-amber-800 animate-pulse hover:animate-none hover:bg-amber-200/90'
+                            }`}
+                          onClick={() => { if (!isResizing.current) handleFieldClick(field); }}
+                        >
+                          {isCompleted ? (
+                            <span 
+                              className={`font-medium overflow-hidden max-h-full w-full flex items-center justify-center ${field.type === 'Signature' || field.type === 'Initial' ? 'font-[cursive]' : ''}`}
+                              style={{ 
+                                fontSize: completedFields[field.id].startsWith('TYPED::') && completedFields[field.id].split('::').length >= 3 && !isNaN(completedFields[field.id].split('::')[1])
+                                  ? `${completedFields[field.id].split('::')[1]}px`
+                                  : field.type === 'Signature' || field.type === 'Initial' ? '24px' : '12px'
+                              }}
+                            >
+                              {completedFields[field.id].startsWith('data:image/') ? (
+                                <img src={completedFields[field.id]} alt="Signature" className="max-h-full max-w-full object-contain pointer-events-none" />
+                              ) : (
+                                completedFields[field.id].startsWith('TYPED::') && completedFields[field.id].split('::').length >= 3 && !isNaN(completedFields[field.id].split('::')[1])
+                                  ? completedFields[field.id].split('::').slice(2).join('::')
+                                  : completedFields[field.id].replace('TYPED::', '')
+                              )}
+                            </span>
+                          ) : (
+                            <span className="text-xs font-bold uppercase tracking-wider flex items-center pointer-events-none">
+                              {field.type === 'Signature' ? (
+                                <><PenTool className="h-3 w-3 mr-1" /> Sign Here</>
+                              ) : field.type === 'Initial' ? (
+                                <><PenTool className="h-3 w-3 mr-1" /> Paraph Here</>
+                              ) : (
+                                field.type
+                              )}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </Document>
           </div>
         </div>
       </main>
@@ -820,11 +884,26 @@ export default function Sign() {
                     type="text"
                     value={signatureText}
                     onChange={(e) => setSignatureText(e.target.value)}
-                    className="w-full text-lg px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 mb-2"
+                    className="w-full text-lg px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 mb-4"
                     placeholder="John Doe"
                   />
-                  <div className="bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-center min-h-[100px]">
-                    <span className="text-4xl text-slate-800" style={{ fontFamily: "'Cedarville Cursive', cursive, serif" }}>
+                  <div className="flex items-center gap-4 mb-4 bg-slate-50 p-3 rounded border border-slate-200">
+                    <span className="text-sm font-medium text-slate-700 whitespace-nowrap">Font Size</span>
+                    <input 
+                      type="range" 
+                      min="10" 
+                      max="48" 
+                      value={typeFontSize} 
+                      onChange={(e) => setTypeFontSize(Number(e.target.value))}
+                      className="w-full accent-slate-900"
+                    />
+                    <span className="text-xs font-semibold text-slate-500 w-8">{typeFontSize}px</span>
+                  </div>
+                  <div className="bg-white border border-slate-200 rounded-lg flex items-center justify-center min-h-[120px] shadow-inner overflow-hidden">
+                    <span className="text-black" style={{ 
+                      fontFamily: (fields.find(f => f.id === activeFieldId)?.type === 'Signature' || fields.find(f => f.id === activeFieldId)?.type === 'Initial') ? "'Cedarville Cursive', cursive, serif" : "inherit",
+                      fontSize: `${typeFontSize}px`
+                    }}>
                       {signatureText || 'Preview'}
                     </span>
                   </div>
@@ -1151,21 +1230,42 @@ export default function Sign() {
 
             <div className="p-6">
               <p className="text-sm text-slate-600 mb-4">
-                This will halt the entire signing workflow and notify the initiator. Please explain why you're declining.
+                This will halt the entire signing workflow and notify the initiator. Please select a reason for declining:
               </p>
-              <textarea
-                value={declineReason}
-                onChange={(e) => setDeclineReason(e.target.value)}
-                maxLength={500}
-                rows={4}
-                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 resize-none"
-                placeholder="e.g. Incorrect terms in section 3, wrong signer assigned..."
-              />
-              <p className="text-xs text-slate-400 text-right mt-1">{declineReason.length}/500</p>
+              
+              <div className="space-y-3 mb-4">
+                {['Information is incorrect', 'I am not authorized to sign this', 'Terms are unacceptable', 'Other'].map(reason => (
+                  <label key={reason} className="flex items-start cursor-pointer">
+                    <input
+                      type="radio"
+                      name="declineReason"
+                      value={reason}
+                      checked={declineReasonRadio === reason}
+                      onChange={(e) => setDeclineReasonRadio(e.target.value)}
+                      className="mt-0.5 h-4 w-4 text-red-600 focus:ring-red-500 border-slate-300"
+                    />
+                    <span className="ml-2.5 text-sm text-slate-700 font-medium">{reason}</span>
+                  </label>
+                ))}
+              </div>
+
+              {declineReasonRadio === 'Other' && (
+                <div className="animate-in fade-in duration-200">
+                  <textarea
+                    value={declineReasonText}
+                    onChange={(e) => setDeclineReasonText(e.target.value)}
+                    maxLength={500}
+                    rows={3}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 resize-none text-sm"
+                    placeholder="Please provide details..."
+                  />
+                  <p className="text-xs text-slate-400 text-right mt-1">{declineReasonText.length}/500</p>
+                </div>
+              )}
 
               <button
                 onClick={handleConfirmDecline}
-                disabled={!declineReason.trim()}
+                disabled={!declineReasonRadio || (declineReasonRadio === 'Other' && !declineReasonText.trim())}
                 className="w-full mt-4 py-3 px-4 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 Confirm Decline

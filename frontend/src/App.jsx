@@ -10,6 +10,7 @@ import Upload from './pages/users/Upload';
 import Review from './pages/users/Review';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AuditLog from './pages/admin/AuditLog';
+import TurnaroundAudit from './pages/admin/TurnaroundAudit';
 import Layout from './components/Layout';
 import ProtectedRoute from './routes/ProtectedRoute';
 import AdminRoutes from './routes/AdminRoutes';
@@ -46,6 +47,7 @@ function App() {
             <Route element={<AdminRoutes />}>
               <Route path="/admin" element={<AdminDashboard />} />
               <Route path="/admin/audit-logs" element={<AuditLog />} />
+              <Route path="/admin/turnaround" element={<TurnaroundAudit />} />
             </Route>
           </Route>
         </Route>
