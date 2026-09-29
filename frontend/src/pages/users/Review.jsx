@@ -279,63 +279,97 @@ export default function Review() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-8 flex justify-center" onScroll={handleScroll}>
-        {isLoading ? (
-          <div className="text-slate-400 text-sm py-20">Loading document…</div>
-        ) : (
-          <Document
-            file={fileUrl}
-            onLoadSuccess={({ numPages }) => setTotalPages(numPages)}
-            className="flex flex-col items-center"
-            loading={
-              <div className="flex flex-col items-center justify-center p-12 text-slate-400">
-                <Loader2 className="h-8 w-8 animate-spin mb-4 text-slate-300" />
-                <p>Loading document...</p>
-              </div>
-            }
-            error={<div className="p-20 text-red-500">Failed to load PDF.</div>}
-          >
-            <div className="w-[750px] flex flex-col">
-              {Array.from(new Array(totalPages), (el, index) => {
-                const pageIndex = index + 1;
-                return (
-                  <div 
-                    key={`review-page-${pageIndex}`} 
-                    id={`review-page-${pageIndex}`} 
-                    className="relative bg-white shadow-xl mb-6 last:mb-0"
-                  >
-                    <Page 
-                      pageNumber={pageIndex} 
-                      width={750} 
-                      renderTextLayer={false} 
-                      renderAnnotationLayer={false} 
-                      loading={<div className="w-[750px] h-[970px] bg-slate-50 animate-pulse flex items-center justify-center text-slate-400">Loading page {pageIndex}...</div>}
-                    />
-                    
-                    {/* Overlay Pending Signature Fields */}
-                    {pendingFields.filter(f => f.page === pageIndex).map((field, idx) => (
-                      <div
-                        key={`pending-field-${idx}`}
-                        style={{
-                          position: 'absolute',
-                          left: `${field.x || 0}px`,
-                          top: `${field.y || 0}px`,
-                          width: `${field.width || 120}px`,
-                          height: `${field.height || 40}px`,
-                        }}
-                        className="border-2 border-dashed border-amber-500 bg-amber-100/40 rounded flex items-center justify-center pointer-events-none z-10"
-                      >
-                        <div className="flex flex-col text-center opacity-90 overflow-hidden w-full px-1">
-                          <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider truncate">{field.type}</span>
-                          <span className="text-[9px] font-medium text-amber-600 truncate max-w-full">{field.signerName}</span>
+      <div className="flex-1 flex overflow-hidden">
+        {/* PDF Area */}
+        <div className="flex-1 overflow-auto p-4 sm:p-8 flex justify-center" onScroll={handleScroll}>
+          {isLoading ? (
+            <div className="text-slate-400 text-sm py-20">Loading document…</div>
+          ) : (
+            <Document
+              file={fileUrl}
+              onLoadSuccess={({ numPages }) => setTotalPages(numPages)}
+              className="flex flex-col items-center"
+              loading={
+                <div className="flex flex-col items-center justify-center p-12 text-slate-400">
+                  <Loader2 className="h-8 w-8 animate-spin mb-4 text-slate-300" />
+                  <p>Loading document...</p>
+                </div>
+              }
+              error={<div className="p-20 text-red-500">Failed to load PDF.</div>}
+            >
+              <div className="w-[750px] flex flex-col">
+                {Array.from(new Array(totalPages), (el, index) => {
+                  const pageIndex = index + 1;
+                  return (
+                    <div 
+                      key={`review-page-${pageIndex}`} 
+                      id={`review-page-${pageIndex}`} 
+                      className="relative bg-white shadow-xl mb-6 last:mb-0"
+                    >
+                      <Page 
+                        pageNumber={pageIndex} 
+                        width={750} 
+                        renderTextLayer={false} 
+                        renderAnnotationLayer={false} 
+                        loading={<div className="w-[750px] h-[970px] bg-slate-50 animate-pulse flex items-center justify-center text-slate-400">Loading page {pageIndex}...</div>}
+                      />
+                      
+                      {/* Overlay Pending Signature Fields (Only on Resume Mode) */}
+                      {isResume && pendingFields.filter(f => f.page === pageIndex).map((field, idx) => (
+                        <div
+                          key={`pending-field-${idx}`}
+                          style={{
+                            position: 'absolute',
+                            left: `${field.xPct || 0}%`,
+                            top: `${field.yPct || 0}%`,
+                            width: `${field.width || 120}px`,
+                            height: `${field.height || 40}px`,
+                          }}
+                          className="border-2 border-dashed border-amber-500 bg-amber-100/40 rounded flex items-center justify-center pointer-events-none z-10"
+                        >
+                          <div className="flex flex-col text-center opacity-90 overflow-hidden w-full px-1">
+                            <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider truncate">{field.type}</span>
+                            <span className="text-[9px] font-medium text-amber-600 truncate max-w-full">{field.signerName}</span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            </Document>
+          )}
+        </div>
+
+        {/* Right Sidebar for Pending Signers */}
+        {!isResume && !isTemplate && pendingFields.length > 0 && (
+          <div className="w-75 bg-white border border-slate-200 overflow-y-auto flex-shrink-0 animate-in slide-in-from-right-4 duration-300">
+            <div className="p-4 border border-slate-100 bg-slate-50/50 sticky top-0 z-10">
+              <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+                Pending Signers
+              </h3>
+            </div>
+            <div className="p-4 space-y-4">
+              {Array.from(new Set(pendingFields.map(f => f.signerEmail))).map(email => {
+                const signerFields = pendingFields.filter(f => f.signerEmail === email);
+                const signerName = signerFields[0]?.signerName || email;
+                return (
+                  <div key={email} className="bg-slate-50 border border-slate-100 rounded-lg p-3 shadow-sm">
+                    <div className="font-medium text-sm text-slate-800 truncate">{signerName}</div>
+                    <div className="text-xs text-slate-500 truncate mb-2">{email}</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {signerFields.map((f, i) => (
+                        <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-200/50">
+                          {f.type} (Pg {f.page})
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 );
               })}
             </div>
-          </Document>
+          </div>
         )}
       </div>
 
