@@ -325,7 +325,7 @@ export default function Review() {
                             width: `${field.width || 120}px`,
                             height: `${field.height || 40}px`,
                           }}
-                          className="border-2 border-dashed border-amber-500 bg-amber-100/40 rounded flex items-center justify-center pointer-events-none z-10"
+                          className="border-[1.5px] border-dashed border-amber-500 bg-amber-100/40 flex items-center justify-center pointer-events-none z-10"
                         >
                           <div className="flex flex-col text-center opacity-90 overflow-hidden w-full px-1">
                             <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider truncate">{field.type}</span>

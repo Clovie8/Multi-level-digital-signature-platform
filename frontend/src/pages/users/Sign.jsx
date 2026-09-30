@@ -277,22 +277,48 @@ export default function Sign() {
     }
   };
 
-  // 2. Handle Opening the Signature Modal
   const handleFieldClick = (field) => {
     setActiveFieldId(field.id);
-    if (field.type === 'Signature' || field.type === 'Initial') {
+    if (field.type === 'Signature') {
       setSignMode('draw');
       setIsModalOpen(true);
       if (!signatureText) setSignatureText(signerInfo?.name || '');
-    } else if (field.type === 'Text Box' || field.type === 'Name' || field.type === 'Date') {
-      setSignMode('type');
-      setIsModalOpen(true);
-      if (!signatureText) {
-        if (field.type === 'Name') setSignatureText(signerInfo?.name || '');
-        else if (field.type === 'Date') setSignatureText(new Date().toLocaleDateString());
-        else setSignatureText('');
+    } else if (field.type === 'Initial') {
+      if (!completedFields[field.id]) {
+        let init = '';
+        if (signerInfo?.name) {
+          const parts = signerInfo.name.split(' ');
+          if (parts.length >= 2) {
+            init = (parts[0][0] + parts[1][0]).toUpperCase();
+          } else {
+            init = parts[0].substring(0, 2).toUpperCase();
+          }
+        }
+        setCompletedFields(prev => ({ ...prev, [field.id]: `TYPED::24::${init}` }));
+      } else {
+        setSignMode('draw');
+        setIsModalOpen(true);
+        if (!signatureText) {
+           const val = completedFields[field.id];
+           if (val.startsWith('TYPED::')) {
+             setSignatureText(val.split('::').slice(2).join('::'));
+           }
+        }
       }
-      setTypeFontSize(16);
+    } else if (field.type === 'Stamp') {
+      setSignMode('upload');
+      setIsModalOpen(true);
+    } else if (field.type === 'Date') {
+      if (!completedFields[field.id]) {
+        const today = new Date().toISOString().split('T')[0];
+        const fontSize = field.fontSize || 14;
+        setCompletedFields(prev => ({ ...prev, [field.id]: `TYPED::${fontSize}::${today}` }));
+      }
+    } else if (field.type === 'Name') {
+      if (!completedFields[field.id] && signerInfo?.name) {
+        const fontSize = field.fontSize || 14;
+        setCompletedFields(prev => ({ ...prev, [field.id]: `TYPED::${fontSize}::${signerInfo.name}` }));
+      }
     }
   };
 
@@ -753,9 +779,9 @@ export default function Sign() {
                       loading={<div className="w-[750px] h-[970px] bg-slate-50 animate-pulse flex items-center justify-center text-slate-400">Loading page {pageIndex}...</div>}
                     />
                     
-                    {/* Render Assigned Fields overlaying this specific page */}
                     {fields.filter(f => f.page === pageIndex).map((field) => {
                       const isCompleted = !!completedFields[field.id];
+                      const fontSize = field.fontSize || 14;
 
                       return (
                         <div
@@ -767,14 +793,45 @@ export default function Sign() {
                             width: `${field.width || 120}px`,
                             height: `${field.height || 40}px`,
                           }}
-                          className={`cursor-pointer border-2 rounded shadow-sm transition-colors flex items-center justify-center z-30 hover:shadow-md
+                          className={`cursor-pointer border-[1.5px] shadow-sm transition-colors flex items-center justify-center z-30 hover:shadow-md
                             ${isCompleted
                               ? 'bg-slate-50 border-slate-200 text-black hover:border-slate-300'
                               : 'bg-amber-100/90 border-amber-400 text-amber-800 animate-pulse hover:animate-none hover:bg-amber-200/90'
                             }`}
                           onClick={() => { if (!isResizing.current) handleFieldClick(field); }}
                         >
-                          {isCompleted ? (
+                          {field.type === 'Date' ? (
+                            <input 
+                              type="date"
+                              min={new Date().toISOString().split('T')[0]} 
+                              value={completedFields[field.id] ? completedFields[field.id].split('::').slice(2).join('::') : ''}
+                              onChange={(e) => setCompletedFields(prev => ({ ...prev, [field.id]: `TYPED::${fontSize}::${e.target.value}` }))}
+                              onClick={(e) => { e.stopPropagation(); handleFieldClick(field); }}
+                              className="w-full h-full bg-transparent border-none outline-none text-center font-medium cursor-pointer"
+                              style={{ fontSize: `${fontSize}px` }}
+                            />
+                          ) : field.type === 'Text Box' || field.type === 'Name' ? (
+                            <textarea 
+                              placeholder={field.type}
+                              value={completedFields[field.id] ? completedFields[field.id].split('::').slice(2).join('::') : ''}
+                              onChange={(e) => {
+                                // Block typing if the content overflows the physical box height
+                                if (e.target.scrollHeight > e.target.clientHeight) return;
+                                setCompletedFields(prev => ({ ...prev, [field.id]: `TYPED::${fontSize}::${e.target.value}` }));
+                              }}
+                              onClick={(e) => { e.stopPropagation(); handleFieldClick(field); }}
+                              className="w-full h-full bg-transparent border-none outline-none text-left px-1 font-medium"
+                              style={{ 
+                                fontSize: `${fontSize}px`, 
+                                lineHeight: 1.2,
+                                resize: 'none', 
+                                overflow: 'hidden',
+                                paddingBottom: 0,
+                                // Fix vertical centering for single line vs multi line
+                                paddingTop: field.height > (fontSize * 2) ? '0px' : `${Math.max(0, (field.height - fontSize * 1.5) / 2)}px`
+                              }}
+                            />
+                          ) : isCompleted ? (
                             <span 
                               className={`font-medium overflow-hidden max-h-full w-full flex items-center justify-center ${field.type === 'Signature' || field.type === 'Initial' ? 'font-[cursive]' : ''}`}
                               style={{ 
@@ -792,11 +849,13 @@ export default function Sign() {
                               )}
                             </span>
                           ) : (
-                            <span className="text-xs font-bold uppercase tracking-wider flex items-center pointer-events-none">
+                            <span className="text-xs font-bold uppercase tracking-wider flex items-center pointer-events-none text-center">
                               {field.type === 'Signature' ? (
                                 <><PenTool className="h-3 w-3 mr-1" /> Sign Here</>
                               ) : field.type === 'Initial' ? (
                                 <><PenTool className="h-3 w-3 mr-1" /> Paraph Here</>
+                              ) : field.type === 'Stamp' ? (
+                                <>Stamp Here</>
                               ) : (
                                 field.type
                               )}
@@ -828,18 +887,23 @@ export default function Sign() {
             <div className="p-6 overflow-y-auto">
               {/* Toggle Draw / Type / Upload */}
               <div className="flex space-x-4 mb-4 border-b border-slate-200 pb-2">
-                <button
-                  onClick={() => setSignMode('draw')}
-                  className={`pb-2 text-sm font-medium transition-colors ${signMode === 'draw' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-900'}`}
-                >
-                  Draw
-                </button>
-                <button
-                  onClick={() => setSignMode('type')}
-                  className={`pb-2 text-sm font-medium transition-colors ${signMode === 'type' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-900'}`}
-                >
-                  Type
-                </button>
+                {fields.find(f => f.id === activeFieldId)?.type !== 'Stamp' && (
+                  <>
+                    <button
+                      onClick={() => setSignMode('draw')}
+                      className={`pb-2 text-sm font-medium transition-colors ${signMode === 'draw' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-900'}`}
+                    >
+                      Draw
+                    </button>
+                    <button
+                      onClick={() => setSignMode('type')}
+                      className={`pb-2 text-sm font-medium transition-colors ${signMode === 'type' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-900'}`}
+                    >
+                      Type
+                    </button>
+                  </>
+                )}
+                
                 <button
                   onClick={() => setSignMode('upload')}
                   className={`pb-2 text-sm font-medium transition-colors ${signMode === 'upload' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-900'}`}
@@ -885,24 +949,12 @@ export default function Sign() {
                     value={signatureText}
                     onChange={(e) => setSignatureText(e.target.value)}
                     className="w-full text-lg px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 mb-4"
-                    placeholder="John Doe"
+                    placeholder="Dknd Clovis"
                   />
-                  <div className="flex items-center gap-4 mb-4 bg-slate-50 p-3 rounded border border-slate-200">
-                    <span className="text-sm font-medium text-slate-700 whitespace-nowrap">Font Size</span>
-                    <input 
-                      type="range" 
-                      min="10" 
-                      max="48" 
-                      value={typeFontSize} 
-                      onChange={(e) => setTypeFontSize(Number(e.target.value))}
-                      className="w-full accent-slate-900"
-                    />
-                    <span className="text-xs font-semibold text-slate-500 w-8">{typeFontSize}px</span>
-                  </div>
                   <div className="bg-white border border-slate-200 rounded-lg flex items-center justify-center min-h-[120px] shadow-inner overflow-hidden">
                     <span className="text-black" style={{ 
                       fontFamily: (fields.find(f => f.id === activeFieldId)?.type === 'Signature' || fields.find(f => f.id === activeFieldId)?.type === 'Initial') ? "'Cedarville Cursive', cursive, serif" : "inherit",
-                      fontSize: `${typeFontSize}px`
+                      fontSize: `24px`
                     }}>
                       {signatureText || 'Preview'}
                     </span>
