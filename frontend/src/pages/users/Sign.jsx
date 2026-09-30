@@ -146,6 +146,8 @@ export default function Sign() {
   const imgRef = useRef(null);
   const [saveForFuture, setSaveForFuture] = useState(false);
   const [isAdopting, setIsAdopting] = useState(false); // Used for upload loading state
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [isDeclining, setIsDeclining] = useState(false);
   const [savedSignatures, setSavedSignatures] = useState([]);
   const [selectedSavedSignature, setSelectedSavedSignature] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
@@ -540,7 +542,7 @@ export default function Sign() {
       return toast.error('Please complete all assigned fields before finishing.');
     }
 
-    setIsLoading(true);
+    setIsCompleting(true);
     try {
       const res = await api.post(`/api/documents/sign/${token}/complete`, {
         completedFields,
@@ -560,7 +562,7 @@ export default function Sign() {
     } catch (error) {
       console.error('Failed to submit:', error);
       toast.error('Failed to save signature. Please try again.');
-      setIsLoading(false);
+      setIsCompleting(false);
     }
   };
 
@@ -575,18 +577,18 @@ export default function Sign() {
       return;
     }
 
-    setIsDeclineModalOpen(false);
-    setIsLoading(true);
+    setIsDeclining(true);
     try {
       await api.post(`/api/documents/sign/${token}/decline`, {
         reason: finalReason
       });
       toast.success('Document declined. The initiator has been notified.');
+      setIsDeclineModalOpen(false);
       navigate('/login');
     } catch (error) {
       console.error('Failed to decline:', error);
       toast.error(error.response?.data?.error || 'Failed to decline document. Please try again.');
-      setIsLoading(false);
+      setIsDeclining(false);
     }
   };
 
@@ -673,14 +675,17 @@ export default function Sign() {
           </div>
           <button
             onClick={handleCompleteDocument}
-            className="flex items-center py-2 px-6 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors shadow-sm"
+            disabled={isCompleting || isDeclining}
+            className="flex items-center justify-center py-2 px-6 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-70"
           >
-            <CheckCircle className="mr-2 h-4 w-4" /> Finish
+            {isCompleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
+            {isCompleting ? 'Finishing...' : 'Finish'}
           </button>
 
           <button
             onClick={handleDeclineClick}
-            className="flex items-center py-2 px-6 bg-white border border-red-300 text-red-600 text-sm font-medium rounded hover:bg-red-50 transition-colors"
+            disabled={isCompleting || isDeclining}
+            className="flex items-center justify-center py-2 px-6 bg-white border border-red-300 text-red-600 text-sm font-medium rounded hover:bg-red-50 transition-colors disabled:opacity-50"
           >
             <X className="mr-2 h-4 w-4" /> Decline
           </button>
@@ -1260,8 +1265,9 @@ export default function Sign() {
               <button
                 onClick={handleAdoptSignature}
                 disabled={isAdopting}
-                className="w-full py-3 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                className="w-full py-3 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm flex items-center justify-center disabled:opacity-70"
               >
+                {isAdopting && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
                 {isAdopting ? 'Processing...' : 'Adopt and Sign'}
               </button>
             </div>
@@ -1277,7 +1283,7 @@ export default function Sign() {
 
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">
               <h3 className="text-lg font-semibold text-slate-900">Decline to Sign</h3>
-              <button onClick={() => setIsDeclineModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="h-5 w-5" /></button>
+              <button disabled={isDeclining} onClick={() => !isDeclining && setIsDeclineModalOpen(false)} className="text-slate-400 hover:text-slate-600 disabled:opacity-50"><X className="h-5 w-5" /></button>
             </div>
 
             <div className="p-6">
@@ -1317,10 +1323,11 @@ export default function Sign() {
 
               <button
                 onClick={handleConfirmDecline}
-                disabled={!declineReasonRadio || (declineReasonRadio === 'Other' && !declineReasonText.trim())}
-                className="w-full mt-4 py-3 px-4 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                disabled={!declineReasonRadio || (declineReasonRadio === 'Other' && !declineReasonText.trim()) || isDeclining}
+                className="w-full mt-4 py-3 px-4 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
               >
-                Confirm Decline
+                {isDeclining && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
+                {isDeclining ? 'Declining...' : 'Confirm Decline'}
               </button>
             </div>
           </div>

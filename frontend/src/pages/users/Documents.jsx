@@ -29,11 +29,11 @@ const generateInitials = (name) => {
     : name.substring(0, 2).toUpperCase();
 };
 
-function ConfirmModal({ isOpen, title, message, confirmText, isDanger, onConfirm, onCancel }) {
+function ConfirmModal({ isOpen, title, message, confirmText, isDanger, onConfirm, onCancel, isProcessing = false }) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4 animate-in fade-in" onClick={onCancel}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4 animate-in fade-in" onClick={!isProcessing ? onCancel : undefined}>
       <div 
         className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
@@ -45,19 +45,22 @@ function ConfirmModal({ isOpen, title, message, confirmText, isDanger, onConfirm
         <div className="bg-slate-50 border-t border-slate-100 p-4 flex justify-end gap-3">
           <button
             onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-md transition-colors"
+            disabled={isProcessing}
+            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-md transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={onConfirm}
-            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+            disabled={isProcessing}
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center justify-center disabled:opacity-70 ${
               isDanger 
                 ? 'bg-red-600 text-white hover:bg-red-700 focus:ring-2 focus:ring-red-600 focus:ring-offset-2' 
                 : 'bg-slate-900 text-white hover:bg-slate-800 focus:ring-2 focus:ring-slate-900 focus:ring-offset-2'
             }`}
           >
-            {confirmText || 'Confirm'}
+            {isProcessing && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
+            {isProcessing ? 'Processing...' : (confirmText || 'Confirm')}
           </button>
         </div>
       </div>
@@ -65,13 +68,13 @@ function ConfirmModal({ isOpen, title, message, confirmText, isDanger, onConfirm
   );
 }
 
-function VoidModal({ isOpen, title, message, isDraft, onConfirm, onCancel }) {
+function VoidModal({ isOpen, title, message, isDraft, onConfirm, onCancel, isProcessing = false }) {
   const [reason, setReason] = useState('');
   
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4 animate-in fade-in" onClick={onCancel}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4 animate-in fade-in" onClick={!isProcessing ? onCancel : undefined}>
       <div 
         className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
@@ -86,27 +89,34 @@ function VoidModal({ isOpen, title, message, isDraft, onConfirm, onCancel }) {
               <textarea
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
+                onKeyDown={(e) => e.stopPropagation()}
                 maxLength={500}
                 rows={3}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:ring-2 focus:ring-red-500 resize-none"
+                disabled={isProcessing}
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:ring-2 focus:ring-red-500 resize-none disabled:bg-slate-50 disabled:text-slate-500"
                 placeholder="Explain why you are voiding this document..."
               />
             </div>
           )}
         </div>
         <div className="bg-slate-50 border-t border-slate-100 p-4 flex justify-end gap-3">
-          <button onClick={onCancel} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200/50 rounded-md transition-colors">
+          <button 
+            onClick={onCancel} 
+            disabled={isProcessing}
+            className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200/50 rounded-md transition-colors disabled:opacity-50"
+          >
             Cancel
           </button>
           <button
             onClick={() => {
               onConfirm(isDraft ? null : reason);
-              setReason('');
+              // don't clear reason immediately here, it will be unmounted or parent can do it
             }}
-            disabled={!isDraft && !reason.trim()}
-            className="px-4 py-2 text-sm font-medium bg-red-600 text-white hover:bg-red-700 focus:ring-2 focus:ring-red-600 focus:ring-offset-2 rounded-md transition-colors disabled:opacity-50"
+            disabled={isProcessing || (!isDraft && !reason.trim())}
+            className="flex items-center justify-center px-4 py-2 text-sm font-medium bg-red-600 text-white hover:bg-red-700 focus:ring-2 focus:ring-red-600 focus:ring-offset-2 rounded-md transition-colors disabled:opacity-70"
           >
-            {isDraft ? 'Delete' : 'Void Document'}
+            {isProcessing && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
+            {isProcessing ? (isDraft ? 'Deleting...' : 'Voiding...') : (isDraft ? 'Delete' : 'Void Document')}
           </button>
         </div>
       </div>
@@ -244,6 +254,7 @@ function RowActions({ document, currentUser, onView, onVoided, onContextMenuActi
   const [isDownloading, setIsDownloading] = useState(false);
   const [isVoiding, setIsVoiding] = useState(false);
   const [isVersionModalOpen, setIsVersionModalOpen] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState(null);
   const menuRef = useRef(null);
   const buttonRef = useRef(null);
 
@@ -301,8 +312,6 @@ function RowActions({ document, currentUser, onView, onVoided, onContextMenuActi
     }
   };
 
-  const [confirmDialog, setConfirmDialog] = useState(null);
-
   const isDraft = document.status === 'draft';
 
   const handleVoid = () => {
@@ -313,13 +322,13 @@ function RowActions({ document, currentUser, onView, onVoided, onContextMenuActi
         : `Void "${document.fileName}"? This cannot be undone, and any remaining signers will be notified.`,
       isDraft,
       action: async (reason) => {
-        setConfirmDialog(null);
-        setIsMenuOpen(false);
         setIsVoiding(true);
         try {
           const res = await api.post(`/api/documents/${document.id}/void`, { reason });
           toast.success(res.data.message);
           onVoided?.();
+          setConfirmDialog(null);
+          setIsMenuOpen(false);
         } catch (err) {
           toast.error(err.response?.data?.error || `Could not ${isDraft ? 'delete' : 'void'} this document.`);
         } finally {
@@ -428,7 +437,8 @@ function RowActions({ document, currentUser, onView, onVoided, onContextMenuActi
         message={confirmDialog?.message}
         isDraft={confirmDialog?.isDraft}
         onConfirm={confirmDialog?.action}
-        onCancel={() => setConfirmDialog(null)}
+        onCancel={() => !isVoiding && setConfirmDialog(null)}
+        isProcessing={isVoiding}
       />
 
       {isVersionModalOpen && (
@@ -743,11 +753,11 @@ function ReviewPanel({ document, onRefresh }) {
   const [showConfirm, setShowConfirm] = useState(false);
 
   const handleApprove = async () => {
-    setShowConfirm(false);
     setIsApproving(true);
     try {
       const res = await api.post(`/api/documents/${document.id}/approve`);
       toast.success(res.data.message);
+      setShowConfirm(false);
       onRefresh();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not approve this document.');
@@ -797,6 +807,7 @@ function ReviewPanel({ document, onRefresh }) {
         message="Approve and finalize this document? It will be sealed and emailed to everyone."
         confirmText="Approve and Seal"
         isDanger={false}
+        isProcessing={isApproving}
         onConfirm={handleApprove}
         onCancel={() => setShowConfirm(false)}
       />
@@ -828,11 +839,11 @@ function DeclineResolutionPanel({ document, onRefresh }) {
   };
 
   const handleConfirmVoid = async (reason) => {
-    setVoidModalOpen(false);
     setIsVoiding(true);
     try {
       const res = await api.post(`/api/documents/${document.id}/void`, { reason });
       toast.success(res.data.message);
+      setVoidModalOpen(false);
       onRefresh();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not void this document.');
@@ -940,6 +951,7 @@ function DeclineResolutionPanel({ document, onRefresh }) {
         title="Void Document"
         message={`Void "${document.fileName}"? This cannot be undone, and any remaining signers will be notified.`}
         isDraft={false}
+        isProcessing={isVoiding}
         onConfirm={handleConfirmVoid}
         onCancel={() => setVoidModalOpen(false)}
       />
@@ -1225,6 +1237,9 @@ export default function Documents() {
   const [isRenameFolderModalOpen, setIsRenameFolderModalOpen] = useState(false);
   const [folderToRename, setFolderToRename] = useState(null);
   const [renameFolderName, setRenameFolderName] = useState('');
+  const [folderToDelete, setFolderToDelete] = useState(null);
+  const [isDeletingFolder, setIsDeletingFolder] = useState(false);
+  const [isSavingFolder, setIsSavingFolder] = useState(false);
   const [folders, setFolders] = useState([]);
 
     const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
@@ -1237,16 +1252,20 @@ export default function Documents() {
   
   
   
-  const handleDeleteFolder = async (folderId) => {
-    if (!window.confirm('Are you sure you want to delete this folder? All contents will be deleted.')) return;
+  const handleDeleteFolder = async () => {
+    if (!folderToDelete) return;
+    setIsDeletingFolder(true);
     try {
-      await api.delete('/api/folders/' + folderId);
-      setFolders(prev => prev.filter(f => f.id !== folderId));
-      if (currentFolderId === folderId) setCurrentFolderId(null);
+      await api.delete('/api/folders/' + folderToDelete.id);
+      setFolders(prev => prev.filter(f => f.id !== folderToDelete.id));
+      if (currentFolderId === folderToDelete.id) setCurrentFolderId(null);
       toast.success('Folder deleted');
+      setFolderToDelete(null);
     } catch (error) {
       console.error(error);
       toast.error('Failed to delete folder');
+    } finally {
+      setIsDeletingFolder(false);
     }
   };
 
@@ -1254,6 +1273,7 @@ export default function Documents() {
     e.preventDefault();
     if (!renameFolderName.trim() || !folderToRename) return;
 
+    setIsSavingFolder(true);
     try {
       const res = await api.put(`/api/folders/${folderToRename.id}/rename`, {
         name: renameFolderName
@@ -1268,6 +1288,8 @@ export default function Documents() {
     } catch (error) {
       console.error('Error renaming folder:', error);
       toast.error(error.response?.data?.error || 'Failed to rename folder');
+    } finally {
+      setIsSavingFolder(false);
     }
   };
 
@@ -1275,6 +1297,7 @@ export default function Documents() {
     e.preventDefault();
     if (!newFolderName.trim()) return;
 
+    setIsSavingFolder(true);
     try {
       const res = await api.post('/api/folders', {
         name: newFolderName,
@@ -1294,6 +1317,8 @@ export default function Documents() {
       } else {
         toast.error(error.response?.data?.error || 'Failed to create folder');
       }
+    } finally {
+      setIsSavingFolder(false);
     }
   };
 
@@ -1325,7 +1350,7 @@ export default function Documents() {
       setIsShareModalOpen(true);
     } else if (action === 'delete') {
       if (item.type === 'folder') {
-        handleDeleteFolder(item.id);
+        setFolderToDelete(item);
       } else if (item.type === 'template') {
         if (!window.confirm('Are you sure you want to delete this template?')) return;
         try {
@@ -1950,8 +1975,11 @@ export default function Documents() {
               </h3>
               <input autoFocus type="text" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} placeholder="Folder name" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md mb-4 focus:ring-2 focus:ring-slate-900" />
               <div className="flex justify-end gap-3">
-                <button type="button" onClick={() => setIsCreateFolderModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition-colors">Cancel</button>
-                <button type="submit" disabled={!newFolderName.trim()} className="px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors disabled:opacity-50">Create</button>
+                <button type="button" onClick={() => !isSavingFolder && setIsCreateFolderModalOpen(false)} disabled={isSavingFolder} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition-colors disabled:opacity-50">Cancel</button>
+                <button type="submit" disabled={!newFolderName.trim() || isSavingFolder} className="flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors disabled:opacity-70">
+                  {isSavingFolder && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
+                  {isSavingFolder ? 'Creating...' : 'Create'}
+                </button>
               </div>
             </form>
           </div>
@@ -1966,10 +1994,42 @@ export default function Documents() {
               </h3>
               <input autoFocus type="text" value={renameFolderName} onChange={e => setRenameFolderName(e.target.value)} placeholder="New folder name" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md mb-4 focus:ring-2 focus:ring-slate-900" />
               <div className="flex justify-end gap-3">
-                <button type="button" onClick={() => setIsRenameFolderModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition-colors">Cancel</button>
-                <button type="submit" disabled={!renameFolderName.trim() || renameFolderName === folderToRename?.name} className="px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors disabled:opacity-50">Rename</button>
+                <button type="button" onClick={() => !isSavingFolder && setIsRenameFolderModalOpen(false)} disabled={isSavingFolder} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition-colors disabled:opacity-50">Cancel</button>
+                <button type="submit" disabled={!renameFolderName.trim() || renameFolderName === folderToRename?.name || isSavingFolder} className="flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors disabled:opacity-70">
+                  {isSavingFolder && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
+                  {isSavingFolder ? 'Renaming...' : 'Rename'}
+                </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {folderToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4 animate-in fade-in" onClick={() => !isDeletingFolder && setFolderToDelete(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">Delete Folder</h3>
+              <p className="text-sm text-slate-500 mb-6">
+                Are you sure you want to delete <span className="font-semibold text-slate-700">"{folderToDelete.name}"</span>? All contents will be permanently deleted. This action cannot be undone.
+              </p>
+              <div className="flex justify-end gap-3">
+                <button 
+                  onClick={() => !isDeletingFolder && setFolderToDelete(null)}
+                  disabled={isDeletingFolder}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleDeleteFolder}
+                  disabled={isDeletingFolder}
+                  className="flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:opacity-70"
+                >
+                  {isDeletingFolder && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
+                  {isDeletingFolder ? 'Deleting...' : 'Delete Folder'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

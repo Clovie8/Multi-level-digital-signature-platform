@@ -158,6 +158,18 @@ export default function Auth() {
 
   useEffect(() => {
     sessionStorage.setItem('authView', view);
+    
+    // Update browser tab title dynamically based on the current view
+    let title = 'Sign In';
+    switch (view) {
+      case 'register': title = 'Create Account'; break;
+      case 'forgot': title = 'Forgot Password'; break;
+      case 'reset': title = 'Reset Password'; break;
+      case 'verify': title = 'Verify Email'; break;
+      case 'invite-password': title = 'Set Password'; break;
+      default: title = 'Sign In'; break;
+    }
+    document.title = `${title} | DSign`;
   }, [view]);
 
   const [isLoading, setIsLoading] = useState(false);

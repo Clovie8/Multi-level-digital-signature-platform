@@ -18,6 +18,7 @@ export default function Layout() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSidebarPinned, setIsSidebarPinned] = useState(false);
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
+  const [dynamicTitle, setDynamicTitle] = useState('');
   
   const isSidebarExpanded = isSidebarPinned || isSidebarHovered;
 
@@ -92,18 +93,41 @@ export default function Layout() {
       { name: 'Admin Dashboard', href: '/admin', icon: ShieldCheck },
     ] : []),
     ...(user?.role !== 'admin' ? [{ name: 'Dashboard', href: '/', icon: Home }] : []),
-    { name: 'Documents', href: '/documents', icon: FolderOpen },
-    { name: 'Upload', href: '/upload', icon: UploadCloud },
-    { name: 'Templates', href: '/folder', icon: FileSignature },
+    { name: 'My Documents', href: '/documents', icon: FolderOpen },
+    { name: 'New Document', href: '/upload', icon: UploadCloud },
+    { name: 'My Templates', href: '/folder', icon: FileSignature },
     { name: 'Profile Settings', href: '/Settings', icon: Settings },
     ...(user?.role === 'admin' ? [{ name: 'Audit Logs', href: '/admin/audit-logs', icon: ScrollText }] : []),
     ...(user?.role === 'admin' ? [{ name: 'Turnaround Audit', href: '/admin/turnaround', icon: Clock }] : []),
   ];
+  // Clear dynamic title when route changes
+  useEffect(() => {
+    setDynamicTitle('');
+  }, [location.pathname]);
+
   // Dynamically set the Header Title based on the current URL route
   const getPageTitle = () => {
+    if (dynamicTitle) return dynamicTitle;
+
     const currentRoute = navigation.find(item => item.href === location.pathname);
-    return currentRoute ? currentRoute.name : 'Document Viewer';
+    if (currentRoute) return currentRoute.name;
+
+    // Smart fallbacks for dynamic routes
+    if (location.pathname.startsWith('/review/')) return 'Review Document';
+    if (location.pathname.startsWith('/sign/')) return 'Sign Document';
+    if (location.pathname.startsWith('/admin/audit-logs')) return 'Audit Logs';
+    if (location.pathname.startsWith('/admin/turnaround')) return 'Turnaround Audit';
+    if (location.pathname.startsWith('/admin')) return 'Admin Dashboard';
+    if (location.pathname.startsWith('/upload')) return 'New Document';
+    
+    return 'Document Viewer';
   };
+
+  // Sync browser tab title
+  useEffect(() => {
+    const title = getPageTitle();
+    document.title = title ? `${title} | DSign` : 'DSign';
+  }, [dynamicTitle, location.pathname, user]);
 
   const NavLinks = ({ isExpanded = true }) => (
     <>
@@ -261,7 +285,7 @@ export default function Layout() {
 
         {/* Dynamic Page Content (This is where Dashboard.jsx renders) */}
         <main className="flex-1 overflow-y-auto bg-[#FAFAFA]">
-          <Outlet context={{ user }} />
+          <Outlet context={{ user, setDynamicTitle }} />
         </main>
 
       </div>
