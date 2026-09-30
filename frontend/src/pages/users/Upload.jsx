@@ -4,7 +4,7 @@ import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import {
   UploadCloud, Users, FileSignature, CheckCircle, Plus, Trash2,
-  ArrowRight, PenTool, Calendar, Type, UserSquare, ChevronLeft, ChevronRight, Search, Send, X, LayoutTemplate, Pencil, Check
+  ArrowRight, PenTool, Calendar, Type, UserSquare, ChevronLeft, ChevronRight, Search, Send, X, LayoutTemplate, Pencil, Check, Stamp, Copy
 } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Rnd } from 'react-rnd';
@@ -228,6 +228,7 @@ export default function Upload() {
 
   // UX State
   const [selectedFieldId, setSelectedFieldId] = useState(null);
+  const [dragGuides, setDragGuides] = useState({ horizontal: null, vertical: null });
   const [isSignerDropdownOpen, setIsSignerDropdownOpen] = useState(false);
 
   const onDocumentLoadSuccess = ({ numPages }) => {
@@ -410,36 +411,29 @@ export default function Upload() {
     setSigners(updatedSigners);
   };
 
+  const getSignerError = (signer) => {
+    if (!signer.name || signer.name.trim() === '') return 'Name is required';
+    if (!signer.email || signer.email.trim() === '') return 'Email is required';
+    
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(signer.email.trim())) {
+      return 'Invalid email address';
+    }
+
+    const emailCount = signers.filter(s => s.email && s.email.trim().toLowerCase() === signer.email.trim().toLowerCase()).length;
+    if (emailCount > 1) return 'Duplicate email address';
+    
+    const nameCount = signers.filter(s => s.name && s.name.trim().toLowerCase() === signer.name.trim().toLowerCase()).length;
+    if (nameCount > 1) return 'Duplicate name';
+
+    return null;
+  };
+
   const validateSigners = () => {
-    const isValid = signers.every(s => s.name.trim() !== '' && s.email.trim() !== '');
+    const isValid = signers.every(s => !getSignerError(s));
     if (!isValid) {
-      toast.error('Please fill out all signer details.');
+      toast.error('Please resolve errors in the Signers & Routing section.');
       return false;
     }
-
-    // Check for duplicate emails (case-insensitive)
-    const emails = signers.map(s => s.email.trim().toLowerCase());
-    const uniqueEmails = new Set(emails);
-    if (uniqueEmails.size !== emails.length) {
-      toast.error('Duplicate emails found. Each signer must have a unique email address.');
-      return false;
-    }
-
-    // Email validation
-    const invalidEmail = emails.find(email => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
-    if (invalidEmail) {
-      toast.error(`Invalid email address: ${invalidEmail}`);
-      return false;
-    }
-
-    // Check for duplicate names (case-insensitive)
-    const names = signers.map(s => s.name.trim().toLowerCase());
-    const uniqueNames = new Set(names);
-    if (uniqueNames.size !== names.length) {
-      toast.error('Duplicate names found. Each signer must have a unique name.');
-      return false;
-    }
-
     return true;
   };
 
@@ -620,8 +614,8 @@ export default function Upload() {
         y: unscaledY,
         xPct: xPct,
         yPct: yPct,
-        width: fieldType === 'Text Box' ? 150 : 100,
-        height: fieldType === 'Text Box' ? 30 : 35,
+        width: fieldType === 'Stamp' ? 80 : (fieldType === 'Text Box' ? 150 : 100),
+        height: fieldType === 'Stamp' ? 80 : (fieldType === 'Text Box' ? 30 : 35),
         required: true
       };
 
@@ -648,6 +642,31 @@ export default function Upload() {
       setFields(prev => prev.map(f => (f.type === 'Initial' && f.signerId === targetField.signerId) ? { ...f, x: newX, y: newY, xPct: xPct, yPct: yPct } : f));
     } else {
       setFields(prev => prev.map(f => f.id === id ? { ...f, x: newX, y: newY, xPct: xPct, yPct: yPct } : f));
+    }
+  };
+
+  const handleDrag = (currentFieldId, data) => {
+    const currentField = fields.find(f => f.id === currentFieldId);
+    if (!currentField) return;
+
+    let newHorizontal = null;
+    let newVertical = null;
+    const threshold = 3;
+
+    fields.forEach(f => {
+      if (f.id === currentField.id || f.page !== currentField.page) return;
+
+      if (Math.abs(data.y - f.y) < threshold) newHorizontal = f.y;
+      else if (Math.abs((data.y + currentField.height) - (f.y + f.height)) < threshold) newHorizontal = f.y + f.height;
+      else if (Math.abs((data.y + currentField.height/2) - (f.y + f.height/2)) < threshold) newHorizontal = f.y + f.height/2;
+      
+      if (Math.abs(data.x - f.x) < threshold) newVertical = f.x;
+      else if (Math.abs((data.x + currentField.width) - (f.x + f.width)) < threshold) newVertical = f.x + f.width;
+      else if (Math.abs((data.x + currentField.width/2) - (f.x + f.width/2)) < threshold) newVertical = f.x + f.width/2;
+    });
+
+    if (dragGuides.horizontal !== newHorizontal || dragGuides.vertical !== newVertical) {
+      setDragGuides({ horizontal: newHorizontal, vertical: newVertical });
     }
   };
 
@@ -949,13 +968,20 @@ export default function Upload() {
                               value={signer.email}
                               disabled={signer.locked}
                               onChange={(e) => handleSignerChange(index, 'email', e.target.value)}
-                              className="block w-full text-xs border-slate-200 rounded focus:ring-slate-900 focus:border-slate-900 disabled:bg-slate-50 disabled:text-slate-500 py-1.5 px-2 border"
+                              className={`block w-full text-xs rounded focus:ring-slate-900 focus:border-slate-900 disabled:bg-slate-50 disabled:text-slate-500 py-1.5 px-2 border ${getSignerError(signer) && (signer.name || signer.email) ? 'border-red-300' : 'border-slate-200'}`}
                             />
+                            {(() => {
+                              const err = getSignerError(signer);
+                              if (err && (signer.name || signer.email)) {
+                                return <div className="text-[10px] text-red-500 mt-1 font-medium flex items-center"><X className="h-3 w-3 mr-0.5"/>{err}</div>;
+                              }
+                              return null;
+                            })()}
                           </div>
 
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between pt-1">
                             {!(isInitiatorFirst && index === 0) ? (
-                              <div className="flex items-center pt-1">
+                              <div className="flex items-center">
                                 <input
                                   type="checkbox"
                                   id={`final-copy-${index}`}
@@ -969,7 +995,18 @@ export default function Upload() {
                               </div>
                             ) : <div></div>}
                             
-                            <button onClick={(e) => { e.stopPropagation(); setEditingSignerId(null); }} className="text-[10px] text-blue-600 font-medium bg-blue-50 px-2.5 py-1 rounded hover:bg-blue-100 transition-colors">
+                            <button 
+                              onClick={(e) => { 
+                                e.stopPropagation(); 
+                                const err = getSignerError(signer);
+                                if (err) {
+                                  toast.error(err);
+                                } else {
+                                  setEditingSignerId(null); 
+                                }
+                              }} 
+                              className="text-[10px] text-blue-600 font-medium bg-blue-50 px-2.5 py-1 rounded hover:bg-blue-100 transition-colors"
+                            >
                               Done
                             </button>
                           </div>
@@ -1030,6 +1067,7 @@ export default function Upload() {
                 <div className="grid grid-cols-2 gap-2">
                   <DraggableField icon={PenTool} label="Signature" type="Signature" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
                   <DraggableField icon={Type} label="Initial" type="Initial" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
+                  <DraggableField icon={Stamp} label="Stamp" type="Stamp" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
                   <DraggableField icon={Calendar} label="Date Signed" type="Date" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
                 
                   <DraggableField icon={UserSquare} label="Name" type="Name" activeColorClasses={activeColorClasses} onDragStart={handleDragStart} />
@@ -1039,7 +1077,6 @@ export default function Upload() {
 
               {/* Document Settings */}
               <div className="p-3">
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Document Settings</label>
                 <div className="space-y-3">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 mb-1">Due Date & Time (Optional)</label>
@@ -1054,67 +1091,7 @@ export default function Upload() {
                 </div>
               </div>
 
-              {/* Properties Panel (Moved to Left Sidebar) */}
-              {selectedFieldId && (
-                <div className="border-t border-slate-200 bg-white shadow-[0_-4px_12px_-6px_rgba(0,0,0,0.1)] flex flex-col z-30 animate-in slide-in-from-bottom-2 duration-200">
-                  <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                    <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">Field Properties</span>
-                    <button onClick={() => setSelectedFieldId(null)} className="text-slate-400 hover:text-slate-700 transition-colors">
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
 
-                  {(() => {
-                    const sField = fields.find(f => f.id === selectedFieldId);
-                    if (!sField) return null;
-                    const fSigner = signers.find(s => s.id === sField.signerId);
-
-                    return (
-                      <div className="p-4 space-y-4">
-                        <div>
-                          <label className="flex items-center text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                            {fSigner && (
-                              <span className={`w-2 h-2 rounded-full mr-1.5 ${fSigner.color.split(' ')[0].replace('-100', '-500')}`}></span>
-                            )}
-                            Assigned To
-                          </label>
-                          <select
-                            value={sField.signerId}
-                            onChange={(e) => updateFieldProperty(sField.id, 'signerId', Number(e.target.value))}
-                            className="block w-full text-xs font-medium text-slate-900 bg-white p-2 rounded border border-slate-200 focus:ring-slate-900 focus:border-slate-900 shadow-sm cursor-pointer"
-                          >
-                            {signers.map(s => (
-                              <option key={s.id} value={s.id}>
-                                {s.name || s.role}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="flex items-center py-1">
-                          <input
-                            type="checkbox"
-                            id="requiredField"
-                            checked={sField.required}
-                            onChange={(e) => updateFieldProperty(sField.id, 'required', e.target.checked)}
-                            className="h-3.5 w-3.5 text-slate-900 rounded border-slate-300 focus:ring-slate-900 cursor-pointer"
-                          />
-                          <label htmlFor="requiredField" className="ml-2 text-xs text-slate-700 font-medium cursor-pointer">Required Field</label>
-                        </div>
-
-                        <div className="pt-4 border-t border-slate-100">
-                          <button
-                            onClick={() => { deleteField(sField.id); setSelectedFieldId(null); }}
-                            className="w-full flex items-center justify-center py-2 px-3 border border-red-200 text-red-600 rounded-md text-xs font-medium hover:bg-red-50 hover:border-red-300 transition-colors shadow-sm"
-                          >
-                            <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Delete Field
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
 
             </div>
 
@@ -1213,28 +1190,130 @@ export default function Upload() {
                                   bounds="parent"
                                   size={{ width: field.width, height: field.height }}
                                   position={{ x: field.x, y: field.y }}
-                                  dragGrid={[10, 10]}
-                                  resizeGrid={[10, 10]}
+                                  lockAspectRatio={field.type === 'Stamp'}
+                                  dragGrid={[1, 1]}
+                                  resizeGrid={[1, 1]}
                                   onDragStart={(e) => { e.stopPropagation(); setSelectedFieldId(field.id); }}
-                                  onDragStop={(e, data) => updateFieldPosition(field.id, data.x, data.y)}
+                                  onDrag={(e, data) => handleDrag(field.id, data)}
+                                  onDragStop={(e, data) => {
+                                    setDragGuides({ horizontal: null, vertical: null });
+                                    updateFieldPosition(field.id, data.x, data.y);
+                                  }}
                                   onResizeStop={(e, direction, ref, delta, position) => {
                                     updateFieldSize(field.id, parseInt(ref.style.width), parseInt(ref.style.height));
                                     updateFieldPosition(field.id, position.x, position.y);
                                   }}
                                   disableDragging={false}
-                                  enableResizing={{ bottom: true, right: true, bottomRight: true }}
-                                  resizeHandleComponent={{
-                                    bottomRight: <ResizeHandle />
+                                  enableResizing={{ top: true, right: true, bottom: true, left: true, topRight: true, bottomRight: true, bottomLeft: true, topLeft: true }}
+                                  resizeHandleStyles={{
+                                    topRight: { position: 'absolute', top: 0, right: 0, transform: 'translate(50%, -50%)', width: '9px', height: '9px', zIndex: 60 },
+                                    bottomRight: { position: 'absolute', bottom: 0, right: 0, transform: 'translate(50%, 50%)', width: '9px', height: '9px', zIndex: 60 },
+                                    bottomLeft: { position: 'absolute', bottom: 0, left: 0, transform: 'translate(-50%, 50%)', width: '9px', height: '9px', zIndex: 60 },
+                                    topLeft: { position: 'absolute', top: 0, left: 0, transform: 'translate(-50%, -50%)', width: '9px', height: '9px', zIndex: 60 }
                                   }}
-                                  className={`absolute border-2 rounded flex items-center justify-center group cursor-move z-40 hover:shadow-md transition-shadow ${bgColor} ${borderColor} ${isSelected ? 'shadow-md z-50' : 'shadow-sm'}`}
+                                  resizeHandleComponent={{
+                                    topRight: <div className={`w-full h-full bg-white border border-slate-400 rounded-full shadow-sm ${isSelected ? 'block' : 'hidden group-hover:block'}`} />,
+                                    bottomRight: <div className={`w-full h-full bg-white border border-slate-400 rounded-full shadow-sm ${isSelected ? 'block' : 'hidden group-hover:block'}`} />,
+                                    bottomLeft: <div className={`w-full h-full bg-white border border-slate-400 rounded-full shadow-sm ${isSelected ? 'block' : 'hidden group-hover:block'}`} />,
+                                    topLeft: <div className={`w-full h-full bg-white border border-slate-400 rounded-full shadow-sm ${isSelected ? 'block' : 'hidden group-hover:block'}`} />,
+                                  }}
+                                  className={`absolute border-[1.5px] flex items-center justify-center group cursor-move z-40 hover:shadow-md transition-shadow ${bgColor} ${borderColor} ${isSelected ? 'shadow-md z-50' : 'shadow-sm'}`}
                                   onClick={(e) => { e.stopPropagation(); setSelectedFieldId(field.id); }}
                                 >
-                                  <span className={`text-[10px] font-bold uppercase tracking-wider flex items-center ${textColor}`}>
-                                    {field.type} {field.required ? '*' : ''}
-                                  </span>
+                                  {/* Floating Tooltip/Toolbar for Selected Field */}
+                                  {isSelected && (
+                                    <div 
+                                      className="absolute -top-12 left-0 bg-white border border-slate-200 rounded shadow-md flex items-center h-10 px-1 gap-1 z-50 pointer-events-auto"
+                                      onClick={(e) => e.stopPropagation()} 
+                                      onMouseDown={(e) => e.stopPropagation()}
+                                    >
+                                      {/* Assigned To Dropdown */}
+                                      <select
+                                        value={field.signerId}
+                                        onChange={(e) => updateFieldProperty(field.id, 'signerId', Number(e.target.value))}
+                                        className="text-xs font-medium text-slate-700 bg-transparent py-1.5 px-2 outline-none cursor-pointer border-r border-slate-100"
+                                      >
+                                        {signers.map(s => (
+                                          <option key={s.id} value={s.id}>{s.name || s.role}</option>
+                                        ))}
+                                      </select>
+                                      
+                                      {/* Font Size Dropdown */}
+                                      {(field.type === 'Text Box' || field.type === 'Name' || field.type === 'Date') && (
+                                        <select
+                                          value={field.fontSize || 14}
+                                          onChange={(e) => updateFieldProperty(field.id, 'fontSize', Number(e.target.value))}
+                                          className="text-xs font-medium text-slate-700 bg-transparent py-1.5 px-2 outline-none cursor-pointer border-r border-slate-100"
+                                          title="Font Size"
+                                        >
+                                          <option value={10}>10</option>
+                                          <option value={12}>12</option>
+                                          <option value={14}>14</option>
+                                          <option value={16}>16</option>
+                                          <option value={20}>20</option>
+                                          <option value={24}>24</option>
+                                        </select>
+                                      )}
+                                      
+                                      {/* Duplicate Button */}
+                                      {field.type !== 'Initial' && (
+                                        <button 
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const duplicatedField = { ...field, id: `field_${Date.now()}`, x: field.x + 20, y: field.y + 20, xPct: field.xPct + 2, yPct: field.yPct + 2 };
+                                            setFields([...fields, duplicatedField]);
+                                            setSelectedFieldId(duplicatedField.id);
+                                          }}
+                                          className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded transition-colors"
+                                          title="Duplicate"
+                                        >
+                                          <Copy className="h-4 w-4" />
+                                        </button>
+                                      )}
+                                      
+                                      {/* Delete Button */}
+                                      <button 
+                                        onClick={(e) => { e.stopPropagation(); deleteField(field.id); setSelectedFieldId(null); }}
+                                        className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors border-l border-slate-100"
+                                        title="Delete"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    </div>
+                                  )}
+
+                                  <div className={`text-[10px] font-bold uppercase tracking-wider flex flex-col items-center justify-center text-center ${textColor}`}>
+                                    <span>{field.type} {field.required ? '*' : ''}</span>
+                                    {(field.type === 'Text Box' || field.type === 'Name') && (() => {
+                                      const fontSize = field.fontSize || 14;
+                                      const paddingTop = field.height > (fontSize * 2) ? 0 : Math.max(0, (field.height - fontSize * 1.5) / 2);
+                                      const availableHeight = field.height - paddingTop;
+                                      const linesCount = Math.max(1, Math.floor(availableHeight / (fontSize * 1.2)));
+                                      
+                                      return (
+                                        <span className="text-[8px] opacity-75 normal-case mt-0.5 font-medium tracking-normal">
+                                          ({linesCount} {linesCount === 1 ? 'line' : 'lines'})
+                                        </span>
+                                      );
+                                    })()}
+                                  </div>
                                 </Rnd>
                               );
                             })}
+                            
+                            {/* Render Alignment Guides */}
+                            {dragGuides.horizontal !== null && (
+                              <div 
+                                className="absolute left-0 right-0 border-t border-dashed border-blue-400 z-30 pointer-events-none"
+                                style={{ top: `${dragGuides.horizontal * pdfScale}px` }}
+                              />
+                            )}
+                            {dragGuides.vertical !== null && (
+                              <div 
+                                className="absolute top-0 bottom-0 border-l border-dashed border-blue-400 z-30 pointer-events-none"
+                                style={{ left: `${dragGuides.vertical * pdfScale}px` }}
+                              />
+                            )}
                           </div>
                         );
                       })}
