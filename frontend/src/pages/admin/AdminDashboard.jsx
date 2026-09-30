@@ -91,7 +91,7 @@ function DeactivateModal({ isOpen, userName, onConfirm, onCancel, isProcessing }
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4" onClick={onCancel}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4" onClick={() => !isProcessing && onCancel()}>
       <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="p-6">
           <h3 className="text-lg font-semibold text-slate-900 mb-2">Deactivate User</h3>
@@ -110,15 +110,17 @@ function DeactivateModal({ isOpen, userName, onConfirm, onCancel, isProcessing }
         <div className="bg-slate-50 border-t border-slate-100 p-4 flex justify-end gap-3">
           <button
             onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-md transition-colors"
+            disabled={isProcessing}
+            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-md transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={() => onConfirm(reason)}
             disabled={isProcessing}
-            className="px-4 py-2 text-sm font-medium rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+            className="flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
           >
+            {isProcessing && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
             {isProcessing ? 'Deactivating…' : 'Deactivate'}
           </button>
         </div>
@@ -171,7 +173,6 @@ function UserActionsMenu({ user: targetUser, currentUserId, onActionComplete }) 
   };
 
   const runToggleActive = async (deactivate, reason) => {
-    setShowDeactivateModal(false);
     setIsProcessing(true);
     try {
       if (deactivate) {
@@ -181,6 +182,7 @@ function UserActionsMenu({ user: targetUser, currentUserId, onActionComplete }) 
       }
       toast.success(`${targetUser.name} has been ${deactivate ? 'deactivated' : 'reactivated'}.`);
       onActionComplete();
+      setShowDeactivateModal(false);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to update status.');
     } finally {
@@ -320,12 +322,12 @@ function InviteModal({ onClose, onInvited }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
-      <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4" onClick={() => !isSubmitting && !isUploading && onClose()}>
+      <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
 
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h3 className="text-lg font-semibold text-slate-900">Invite users</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700">
+          <button onClick={onClose} disabled={isSubmitting || isUploading} className="text-slate-400 hover:text-slate-700 disabled:opacity-50">
             <X className="h-5 w-5" />
           </button>
         </div>

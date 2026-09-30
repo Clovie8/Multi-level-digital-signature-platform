@@ -4,7 +4,7 @@ import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import {
   UploadCloud, Users, FileSignature, CheckCircle, Plus, Trash2,
-  ArrowRight, PenTool, Calendar, Type, UserSquare, ChevronLeft, ChevronRight, Search, Send, X, LayoutTemplate, Pencil, Check, Stamp, Copy
+  ArrowRight, PenTool, Calendar, Type, UserSquare, ChevronLeft, ChevronRight, Search, Send, X, LayoutTemplate, Pencil, Check, Stamp, Copy, Loader2
 } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Rnd } from 'react-rnd';
@@ -1115,15 +1115,17 @@ export default function Upload() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <button onClick={handleSaveAsDraft} disabled={isLoading} className="px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 transition-colors disabled:opacity-50">
+                  <button onClick={handleSaveAsDraft} disabled={isLoading} className="flex items-center justify-center px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 transition-colors disabled:opacity-50">
+                    {isLoading && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
                     {isLoading ? 'Saving...' : 'Save as draft'}
                   </button>
                   <button
                     onClick={handleDispatchDocument}
                     disabled={isLoading}
-                    className="flex items-center py-2 px-4 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-sm"
+                    className="flex items-center justify-center py-2 px-4 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-sm"
                   >
-                    {isLoading ? 'Processing...' : 'Send Document'} <Send className="ml-2 h-4 w-4" />
+                    {isLoading && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
+                    {isLoading ? 'Processing...' : 'Send Document'} {!isLoading && <Send className="ml-2 h-4 w-4" />}
                   </button>
                 </div>
               </div>

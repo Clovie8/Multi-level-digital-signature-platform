@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { useNavigate, useParams, useLocation, useOutletContext } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import { Document, Page, pdfjs } from 'react-pdf';
@@ -12,11 +12,11 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString();
 
-function ConfirmModal({ isOpen, title, message, confirmText, isDanger, onConfirm, onCancel }) {
+function ConfirmModal({ isOpen, title, message, confirmText, isDanger, onConfirm, onCancel, isProcessing = false }) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4 animate-in fade-in" onClick={onCancel}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4 animate-in fade-in" onClick={!isProcessing ? onCancel : undefined}>
       <div 
         className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
@@ -28,19 +28,22 @@ function ConfirmModal({ isOpen, title, message, confirmText, isDanger, onConfirm
         <div className="bg-slate-50 border-t border-slate-100 p-4 flex justify-end gap-3">
           <button
             onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-md transition-colors"
+            disabled={isProcessing}
+            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-md transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={onConfirm}
-            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+            disabled={isProcessing}
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center justify-center disabled:opacity-70 ${
               isDanger 
                 ? 'bg-red-600 text-white hover:bg-red-700 focus:ring-2 focus:ring-red-600 focus:ring-offset-2' 
                 : 'bg-slate-900 text-white hover:bg-slate-800 focus:ring-2 focus:ring-slate-900 focus:ring-offset-2'
             }`}
           >
-            {confirmText || 'Confirm'}
+            {isProcessing && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
+            {isProcessing ? 'Processing...' : (confirmText || 'Confirm')}
           </button>
         </div>
       </div>
@@ -55,6 +58,8 @@ export default function Review() {
   const searchParams = new URLSearchParams(location.search);
   const isPreview = searchParams.get('mode') === 'preview';
   const isResume = searchParams.get('mode') === 'resume';
+
+  const { setDynamicTitle } = useOutletContext();
 
   const [fileUrl, setFileUrl] = useState(null);
   const [fileName, setFileName] = useState('');
@@ -95,6 +100,13 @@ export default function Review() {
 
         setFileUrl(downloadRes.data.url);
         setFileName(downloadRes.data.fileName);
+
+        // Update the dynamic title in the header
+        setDynamicTitle(
+          isTemplate 
+            ? `Preview: ${downloadRes.data.fileName}` 
+            : (isPreview || isResume ? `Viewing: ${downloadRes.data.fileName}` : `Reviewing: ${downloadRes.data.fileName}`)
+        );
 
         if (isTemplate) {
           // Extract template fields
@@ -172,11 +184,11 @@ export default function Review() {
   };
 
   const handleApprove = async () => {
-    setShowConfirm(false);
     setIsApproving(true);
     try {
       const res = await api.post(`/api/documents/${id}/approve`);
       toast.success(res.data.message);
+      setShowConfirm(false);
       navigate('/documents');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not approve this document.');
@@ -186,11 +198,11 @@ export default function Review() {
   };
 
   const handleResume = async () => {
-    setShowConfirm(false);
     setIsResuming(true);
     try {
       await api.post(`/api/documents/${id}/resume`);
       toast.success('Document has been resumed. The signer has been re-notified.');
+      setShowConfirm(false);
       navigate('/documents');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not resume this document.');
@@ -383,6 +395,7 @@ export default function Review() {
         }
         confirmText={isResume ? "Resume Document" : "Approve and Seal"}
         isDanger={false}
+        isProcessing={isResume ? isResuming : isApproving}
         onConfirm={isResume ? handleResume : handleApprove}
         onCancel={() => setShowConfirm(false)}
       />
