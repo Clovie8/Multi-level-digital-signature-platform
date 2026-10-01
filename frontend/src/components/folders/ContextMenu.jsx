@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { FolderInput, Edit2, Share2, Trash2, Eye, ArrowRight } from 'lucide-react';
 
-export default function ContextMenu({ x, y, item, onClose, onAction }) {
+export default function ContextMenu({ x, y, item, onClose, onAction, activeTab }) {
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -70,25 +70,22 @@ export default function ContextMenu({ x, y, item, onClose, onAction }) {
         </button>
       )}
       
-      {item.type === 'folder' && (
-        <>
-          {role === 'manager' && (
-            <>
-              <button 
-                onClick={() => { onAction('rename', item); onClose(); }}
-                className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2"
-              >
-                <Edit2 className="h-4 w-4 text-slate-400" /> Rename
-              </button>
-              <button 
-                onClick={() => { onAction('share', item); onClose(); }}
-                className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2"
-              >
-                <Share2 className="h-4 w-4 text-slate-400" /> Share
-              </button>
-            </>
-          )}
-        </>
+      {role === 'manager' && (
+        <button 
+          onClick={() => { onAction('rename', item); onClose(); }}
+          className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2"
+        >
+          <Edit2 className="h-4 w-4 text-slate-400" /> Rename
+        </button>
+      )}
+
+      {item.type === 'folder' && role === 'manager' && activeTab === 'templates' && (
+        <button 
+          onClick={() => { onAction('share', item); onClose(); }}
+          className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2"
+        >
+          <Share2 className="h-4 w-4 text-slate-400" /> Share
+        </button>
       )}
       
       {role === 'manager' && item.type !== 'document' && item.type !== 'template' && (

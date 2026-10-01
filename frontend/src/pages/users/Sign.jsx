@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { PenTool, CheckCircle, ChevronLeft, ChevronRight, X, Upload, Lock } from 'lucide-react';
+import { PenTool, CheckCircle, ChevronLeft, ChevronRight, X, Upload, Lock, Loader2 } from 'lucide-react';
 import SignatureCanvas from 'react-signature-canvas';
 import { Rnd } from 'react-rnd';
 import ReactCrop from 'react-image-crop';
