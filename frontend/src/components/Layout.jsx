@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, useNavigate, useLocation, useOutletContext, Link } from 'react-router-dom';
-import { PenTool, Menu, X, Home, FileSignature, Settings, LogOut, User, ChevronDown, ChevronLeft, ChevronRight, UploadCloud, ShieldCheck, ScrollText, FolderOpen, Clock } from 'lucide-react';
+import { PenTool, Menu, X, Home, FileSignature, Settings, LogOut, User, ChevronDown, ChevronLeft, ChevronRight, UploadCloud, ShieldCheck, ScrollText, FolderOpen, Clock, Layers } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
 
@@ -97,8 +97,11 @@ export default function Layout() {
     { name: 'New Document', href: '/upload', icon: UploadCloud },
     { name: 'My Templates', href: '/folder', icon: FileSignature },
     { name: 'Profile Settings', href: '/Settings', icon: Settings },
-    ...(user?.role === 'admin' ? [{ name: 'Audit Logs', href: '/admin/audit-logs', icon: ScrollText }] : []),
-    ...(user?.role === 'admin' ? [{ name: 'Turnaround Audit', href: '/admin/turnaround', icon: Clock }] : []),
+    ...(user?.role === 'admin' ? [
+      { name: 'All Documents', href: '/admin/all-documents', icon: Layers },
+      { name: 'Audit Logs', href: '/admin/audit-logs', icon: ScrollText },
+      { name: 'Turnaround Audit', href: '/admin/turnaround', icon: Clock }
+    ] : []),
   ];
   // Clear dynamic title when route changes
   useEffect(() => {
@@ -117,6 +120,7 @@ export default function Layout() {
     if (location.pathname.startsWith('/sign/')) return 'Sign Document';
     if (location.pathname.startsWith('/admin/audit-logs')) return 'Audit Logs';
     if (location.pathname.startsWith('/admin/turnaround')) return 'Turnaround Audit';
+    if (location.pathname.startsWith('/admin/all-documents')) return 'All Documents';
     if (location.pathname.startsWith('/admin')) return 'Admin Dashboard';
     if (location.pathname.startsWith('/upload')) return 'New Document';
     

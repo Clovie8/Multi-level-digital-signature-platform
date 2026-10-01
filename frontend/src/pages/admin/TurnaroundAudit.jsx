@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
-import { Clock, Users, Loader2, Search } from 'lucide-react';
+import { Clock, Users, Loader2, Search, X } from 'lucide-react';
+import { format } from 'date-fns';
 
 const RATING_META = {
   Fast: { dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50' },
@@ -38,6 +39,7 @@ export default function TurnaroundAudit() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [ratingFilter, setRatingFilter] = useState('All');
+  const [selectedSigner, setSelectedSigner] = useState(null);
 
   const fetchAuditData = async () => {
     try {
@@ -161,7 +163,11 @@ export default function TurnaroundAudit() {
                 </thead>
                 <tbody>
                   {filteredSigners.map((s, idx) => (
-                    <tr key={idx} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50 transition-colors">
+                    <tr 
+                      key={idx} 
+                      onClick={() => setSelectedSigner(s)}
+                      className="cursor-pointer border-b border-slate-100 last:border-b-0 hover:bg-slate-50 transition-colors"
+                    >
                       <td className="px-5 py-3">
                         <span className="text-sm font-bold text-slate-400">#{idx + 1}</span>
                       </td>
@@ -195,6 +201,83 @@ export default function TurnaroundAudit() {
           )}
         </div>
       </div>
+
+      {/* Signer Details Modal */}
+      {selectedSigner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in" onClick={() => setSelectedSigner(null)}>
+          <div 
+            className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">{selectedSigner.name}</h3>
+                <p className="text-sm text-slate-500">{selectedSigner.email} • {selectedSigner.documentsSigned} documents signed</p>
+              </div>
+              <button 
+                onClick={() => setSelectedSigner(null)}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 rounded-full transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="overflow-y-auto flex-1 p-6">
+              <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-600">Document Name</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-600">Initiated At</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-600">Reached At</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-600">Signed At</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-600 text-right">Turnaround</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {selectedSigner.history && selectedSigner.history.length > 0 ? (
+                      selectedSigner.history.map((doc, i) => (
+                        <tr key={i} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-3 text-sm font-medium text-slate-900 truncate max-w-[200px]" title={doc.fileName}>
+                            {doc.fileName}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-500">
+                            {doc.initiatedAt ? format(new Date(doc.initiatedAt), 'MMM d, yyyy h:mm a') : 'N/A'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-500">
+                            {doc.reachedAt ? format(new Date(doc.reachedAt), 'MMM d, yyyy h:mm a') : 'N/A'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-500">
+                            {doc.signedAt ? format(new Date(doc.signedAt), 'MMM d, yyyy h:mm a') : 'N/A'}
+                          </td>
+                          <td className="px-4 py-3 text-sm font-medium text-slate-700 text-right">
+                            {formatTimeHuman(doc.turnaroundHours)}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="5" className="px-4 py-8 text-center text-sm text-slate-400">
+                          No document history found for this signer.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            
+            <div className="px-6 py-4 border-t border-slate-100 flex justify-end bg-slate-50">
+              <button
+                onClick={() => setSelectedSigner(null)}
+                className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
