@@ -95,7 +95,7 @@ export default function Layout() {
     ...(user?.role !== 'admin' ? [{ name: 'Dashboard', href: '/', icon: Home }] : []),
     { name: 'My Documents', href: '/documents', icon: FolderOpen },
     { name: 'New Document', href: '/upload', icon: UploadCloud },
-    { name: 'My Templates', href: '/folder', icon: FileSignature },
+    // { name: 'My Templates', href: '/folder', icon: FileSignature },
     { name: 'Profile Settings', href: '/Settings', icon: Settings },
     ...(user?.role === 'admin' ? [
       { name: 'All Documents', href: '/admin/all-documents', icon: Layers },
@@ -176,9 +176,7 @@ export default function Layout() {
         </button>
 
         <div className={`flex items-center h-16 border-b border-slate-800 transition-all duration-300 ${isSidebarExpanded ? 'px-6 justify-start' : 'justify-center'}`}>
-          <div className="h-8 w-8 bg-white rounded flex items-center justify-center shadow-sm flex-shrink-0">
-            <PenTool className="text-slate-900 h-5 w-5" />
-          </div>
+          <img src="/DSign Logo.svg" alt="DSign Logo" className="h-10 w-10 rounded-lg object-contain flex-shrink-0" />
           {isSidebarExpanded && (
             <span className="text-xl font-bold tracking-tight text-white ml-3 truncate">DSign</span>
           )}
@@ -201,9 +199,7 @@ export default function Layout() {
           <div className="relative flex flex-col w-64 max-w-xs bg-slate-900 h-full shadow-2xl animate-in slide-in-from-left duration-300">
             <div className="flex items-center justify-between px-6 h-16 border-b border-slate-800">
               <div className="flex items-center">
-                <div className="h-8 w-8 bg-white rounded flex items-center justify-center mr-3 flex-shrink-0">
-                  <PenTool className="text-slate-900 h-5 w-5" />
-                </div>
+                <img src="/DSign Logo.svg" alt="DSign Logo" className="h-10 w-10 mr-3 rounded-lg object-contain flex-shrink-0" />
                 <span className="text-xl font-bold tracking-tight text-white">DSign</span>
               </div>
               <button onClick={() => setIsMobileMenuOpen(false)} className="text-slate-400 hover:text-white">
