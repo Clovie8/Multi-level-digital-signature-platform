@@ -434,9 +434,7 @@ export default function Auth() {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(59,130,246,0.15),transparent_50%)]" />
         <div className="relative z-10 flex flex-col justify-between p-12 w-full">
           <div className="flex items-center space-x-3">
-            <div className="h-10 w-10 bg-white rounded-lg flex items-center justify-center shadow-sm">
-              <PenTool className="text-slate-900 h-5 w-5" />
-            </div>
+            <img src="/DSign Logo.svg" alt="DSign Logo" className="h-12 w-12 rounded-xl object-contain flex-shrink-0" />
             <span className="text-2xl font-bold tracking-tight text-white">DSign</span>
           </div>
 
@@ -460,9 +458,7 @@ export default function Auth() {
           {/* Mobile-only logo (hidden on desktop since the left panel shows it) */}
           <div className="flex justify-center mb-8 lg:hidden">
             <div className="flex items-center space-x-2">
-              <div className="h-10 w-10 bg-slate-900 rounded-lg flex items-center justify-center shadow-sm">
-                <PenTool className="text-white h-5 w-5" />
-              </div>
+              <img src="/DSign Logo.svg" alt="DSign Logo" className="h-12 w-12 rounded-xl object-contain flex-shrink-0" />
               <span className="text-2xl font-bold tracking-tight text-slate-900">DSign</span>
             </div>
           </div>

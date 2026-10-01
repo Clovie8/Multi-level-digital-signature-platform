@@ -662,9 +662,7 @@ export default function Sign() {
       {/* PUBLIC HEADER - Clean and locked down */}
       <header className="flex items-center justify-between px-6 h-16 bg-white border-b border-slate-200 shadow-sm z-10 shrink-0">
         <div className="flex items-center">
-          <div className="h-8 w-8 bg-slate-900 rounded flex items-center justify-center mr-3">
-            <PenTool className="text-white h-4 w-4" />
-          </div>
+          <img src="/DSign Logo.svg" alt="DSign Logo" className="h-10 w-10 mr-3 rounded-lg object-contain flex-shrink-0" />
           <span className="text-xl font-bold tracking-tight text-slate-900">DSign</span>
         </div>
 
