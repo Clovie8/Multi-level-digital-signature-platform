@@ -58,6 +58,7 @@ export default function Review() {
   const searchParams = new URLSearchParams(location.search);
   const isPreview = searchParams.get('mode') === 'preview';
   const isResume = searchParams.get('mode') === 'resume';
+  const isFromAdmin = searchParams.get('from') === 'admin';
 
   const { setDynamicTitle } = useOutletContext();
 
@@ -214,8 +215,8 @@ export default function Review() {
   return (
     <div className="min-h-full bg-slate-50 flex flex-col">
       <div className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 flex-shrink-0">
-        <button onClick={() => navigate('/documents')} className="flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors">
-          <ArrowLeft className="h-4 w-4" /> Back to Documents
+        <button onClick={() => navigate(isFromAdmin ? '/admin/all-documents' : '/documents')} className="flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors">
+          <ArrowLeft className="h-4 w-4" /> {isFromAdmin ? 'Back to All Documents' : 'Back to Documents'}
         </button>
 
         <div className="flex items-center gap-2">
