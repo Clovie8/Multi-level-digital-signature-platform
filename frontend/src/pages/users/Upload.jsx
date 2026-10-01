@@ -4,7 +4,7 @@ import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import {
   UploadCloud, Users, FileSignature, CheckCircle, Plus, Trash2,
-  ArrowRight, PenTool, Calendar, Type, UserSquare, ChevronLeft, ChevronRight, Search, Send, X, LayoutTemplate, Pencil, Check, Stamp, Copy, Loader2
+  ArrowRight, PenTool, Calendar, Type, UserSquare, ChevronLeft, ChevronRight, Search, Send, X, LayoutTemplate, Pencil, Check, Stamp, Copy, Loader2, Folder
 } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Rnd } from 'react-rnd';
@@ -66,6 +66,135 @@ const templateSelectStyles = {
   menu: (base) => ({ ...base, borderRadius: '0.5rem', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' })
 };
 
+function TemplateBrowserModal({ folders, templates, onClose, onSelect }) {
+  const [currentFolderId, setCurrentFolderId] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
+
+  const templateFolders = folders.filter(f => f.type === 'template' && (f.parent_folder_id || null) === currentFolderId);
+  const currentTemplates = templates.filter(t => (t.folder_id || null) === currentFolderId);
+
+  const getBreadcrumbs = () => {
+    const crumbs = [{ id: null, name: 'Templates Root' }];
+    let curr = currentFolderId;
+    const path = [];
+    while (curr) {
+      const f = folders.find(folder => folder.id === curr);
+      if (f) {
+        path.unshift({ id: f.id, name: f.name });
+        curr = f.parent_folder_id;
+      } else {
+        break;
+      }
+    }
+    return [...crumbs, ...path];
+  };
+
+  const breadcrumbs = getBreadcrumbs();
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-slate-900/50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl h-[600px] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+        {/* Header & Breadcrumbs */}
+        <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col gap-3 shrink-0">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+              <LayoutTemplate className="h-5 w-5 text-blue-600" />
+              Browse Templates
+            </h2>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-700 transition-colors">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          
+          <div className="flex items-center flex-wrap gap-2 text-sm font-medium">
+            {breadcrumbs.map((crumb, idx) => (
+              <div key={crumb.id || 'root'} className="flex items-center gap-2">
+                {idx > 0 && <ChevronRight className="h-4 w-4 text-slate-400" />}
+                <button
+                  onClick={() => setCurrentFolderId(crumb.id)}
+                  className={`hover:text-blue-600 transition-colors ${idx === breadcrumbs.length - 1 ? 'text-slate-900' : 'text-slate-500'}`}
+                >
+                  {crumb.name}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Directory View */}
+        <div className="flex-grow overflow-y-auto p-6 bg-white custom-scrollbar">
+          {templateFolders.length === 0 && currentTemplates.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-slate-400">
+              <Folder className="h-12 w-12 mb-3 opacity-20" />
+              <p>This folder is empty.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {/* Folders */}
+              {templateFolders.map(folder => (
+                <button
+                  key={folder.id}
+                  onClick={() => setCurrentFolderId(folder.id)}
+                  className="flex items-center gap-3 p-3 text-left border border-slate-200 rounded-lg hover:border-blue-400 hover:shadow-sm hover:bg-blue-50/30 transition-all group"
+                >
+                  <Folder className="h-6 w-6 text-slate-400 group-hover:text-blue-500 transition-colors flex-shrink-0" />
+                  <span className="font-medium text-sm text-slate-700 group-hover:text-slate-900 truncate">{folder.name}</span>
+                </button>
+              ))}
+
+              {/* Templates */}
+              {currentTemplates.map(template => (
+                <button
+                  key={template.id}
+                  onClick={() => setSelectedId(template.id)}
+                  className={`flex items-start gap-3 p-3 text-left border rounded-lg transition-all ${
+                    selectedId === template.id 
+                      ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500 shadow-sm' 
+                      : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  <LayoutTemplate className={`h-6 w-6 mt-0.5 flex-shrink-0 ${selectedId === template.id ? 'text-blue-600' : 'text-slate-400'}`} />
+                  <div className="min-w-0">
+                    <p className={`font-semibold text-sm truncate ${selectedId === template.id ? 'text-blue-900' : 'text-slate-900'}`}>
+                      {template.name}
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-0.5 truncate">
+                      {template.signerCount} signer{template.signerCount !== 1 ? 's' : ''}
+                      {typeof template.usageCount === 'number' ? ` · used ${template.usageCount}×` : ''}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer Actions */}
+        <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3 shrink-0">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-md transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => {
+              if (selectedId) {
+                onSelect(selectedId);
+                onClose();
+              }
+            }}
+            disabled={!selectedId}
+            className="px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Use Selected Template
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Upload() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -76,15 +205,19 @@ export default function Upload() {
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
-    const fetchUser = async () => {
+    const fetchInitialData = async () => {
       try {
-        const res = await api.get('/api/auth/me');
-        setCurrentUser(res.data);
+        const [userRes, foldersRes] = await Promise.all([
+          api.get('/api/auth/me'),
+          api.get('/api/folders/all').catch(() => ({ data: { folders: [] } }))
+        ]);
+        setCurrentUser(userRes.data);
+        setFolders(foldersRes.data.folders || []);
       } catch (err) {
         console.error(err);
       }
     };
-    fetchUser();
+    fetchInitialData();
   }, []);
 
   // Workflow State
@@ -97,11 +230,35 @@ export default function Upload() {
   const [templates, setTemplates] = useState([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+
+  const [folders, setFolders] = useState([]);
+  const [selectedFolderId, setSelectedFolderId] = useState(null);
+
+  const getFolderPath = (folder) => {
+    const path = [];
+    let curr = folder;
+    while (curr) {
+      path.unshift(curr.name);
+      curr = folders.find(f => f.id === (curr.parent_folder_id || curr.parentId || curr.parent_id));
+    }
+    return path.join(' / ');
+  };
+
+  const folderOptions = [
+    { value: null, label: 'Root (No folder)' },
+    ...folders
+      .filter(f => f.type !== 'template')
+      .map(f => ({ value: f.id, label: getFolderPath(f) }))
+  ].sort((a, b) => {
+    if (a.value === null) return -1;
+    if (b.value === null) return 1;
+    return a.label.localeCompare(b.label);
+  });
 
   // Flag set at upload time; the actual template is saved right before dispatch,
   // once fields + signer roles are finalized (a raw upload alone has neither).
   const [saveAsTemplate, setSaveAsTemplate] = useState(false);
-  const [templateName, setTemplateName] = useState('');
   const [templatesFetched, setTemplatesFetched] = useState(false);
 
   // Signer Hierarchy State
@@ -286,11 +443,18 @@ export default function Upload() {
   // 1: UPLOAD HANDLERS
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
-    if (selectedFile && selectedFile.type === 'application/pdf') {
-      setFile(selectedFile);
-    } else {
-      toast.error('Please upload a valid PDF file.');
+    if (!selectedFile) return;
+
+    if (selectedFile.type !== 'application/pdf') {
+      return toast.error('Please upload a valid PDF file.');
     }
+
+    const maxSizeInBytes = 10 * 1024 * 1024; // 10MB
+    if (selectedFile.size > maxSizeInBytes) {
+      return toast.error('File size exceeds the 10MB maximum limit.');
+    }
+
+    setFile(selectedFile);
   };
 
   const handleUploadSubmit = async () => {
@@ -305,6 +469,9 @@ export default function Upload() {
     setIsLoading(true);
     const formData = new FormData();
     formData.append('pdf_file', file);
+    if (selectedFolderId) {
+      formData.append('folder_id', selectedFolderId);
+    }
 
     try {
       if (existingFile) {
@@ -335,7 +502,7 @@ export default function Upload() {
 
     setIsLoading(true);
     try {
-      const res = await api.post(`/api/templates/${selectedTemplateId}/use`);
+      const res = await api.post(`/api/templates/${selectedTemplateId}/use`, { folder_id: selectedFolderId });
       const { document: newDoc, signers: templateSigners, fields: templateFields } = res.data;
 
       setDocumentId(newDoc.id);
@@ -468,9 +635,7 @@ export default function Upload() {
       return toast.error(`Please assign at least one field to: ${signersWithoutFields.map(s => s.name || s.role).join(', ')}`);
     }
 
-    if (saveAsTemplate && !templateName.trim()) {
-      return toast.error('Please give your template a name.');
-    }
+    // No template name validation needed as it automatically takes the document name
 
     if (!validateSigners()) return;
 
@@ -491,7 +656,8 @@ export default function Upload() {
           await api.patch(`/api/documents/${documentId}/draft-config`, {
             signers: finalSigners, fields, isInitiatorFirst, initiatorReceivesFinalCopy, currentStep, dueDate
           });
-          await api.post(`/api/documents/${documentId}/save-as-template`, { name: templateName.trim() });
+          const autoTemplateName = file?.name || existingFile?.fileName || 'Template';
+          await api.post(`/api/documents/${documentId}/save-as-template`, { name: autoTemplateName });
           toast.success('Template saved.');
         } catch (templateErr) {
           toast.error(templateErr.response?.data?.error || 'Could not save as template — sending document anyway.');
@@ -704,6 +870,15 @@ export default function Upload() {
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] font-sans pb-12">
+      {isTemplateModalOpen && (
+        <TemplateBrowserModal
+          folders={folders}
+          templates={templates}
+          onClose={() => setIsTemplateModalOpen(false)}
+          onSelect={setSelectedTemplateId}
+        />
+      )}
+
       <main className={`mx-auto mt-8 px-4 sm:px-6 transition-all duration-500 ${currentStep === 2 ? 'w-full max-w-[1400px]' : 'max-w-4xl'}`}>
 
         {/* STEP 1 UI: UPLOAD */}
@@ -767,83 +942,107 @@ export default function Upload() {
                       Save this as a reusable template
                     </label>
                   </div>
-                  {saveAsTemplate && (
-                    <div className="p-2.5 pt-0">
-                      <input
-                        type="text"
-                        placeholder="Template name (e.g. NDA — Standard)"
-                        value={templateName}
-                        onChange={(e) => setTemplateName(e.target.value)}
-                        className="block w-full text-sm border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900 py-2 px-3 border"
-                      />
-                      <p className="text-xs text-slate-500 mt-1.5">
-                        Saved once you finish setting up hierarchy and fields, right before sending.
-                      </p>
-                    </div>
-                  )}
                 </div>
 
-                <div className="mt-6 flex justify-end">
-                  <button
-                    onClick={handleUploadSubmit}
-                    disabled={isLoading || (!file && !existingFile)}
-                    className="flex items-center py-2.5 px-6 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors disabled:opacity-50"
-                  >
-                    {isLoading ? 'Uploading securely...' : 'Continue to Hierarchy'} <ArrowRight className="ml-2 h-4 w-4" />
-                  </button>
+                <div className="mt-8 border-t border-slate-100 pt-8 space-y-6">
+                  {/* Destination Folder Panel */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-left transition-all hover:border-slate-300">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-md bg-white border border-slate-200 flex items-center justify-center text-slate-400 flex-shrink-0 shadow-sm">
+                        <Folder className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold text-slate-900">Destination Folder</h3>
+                        <p className="text-[11px] text-slate-500 mt-0.5">Where should this document be saved?</p>
+                      </div>
+                    </div>
+                    <div className="w-full sm:w-72">
+                      <Select
+                        options={folderOptions}
+                        value={folderOptions.find(o => o.value === selectedFolderId) || folderOptions[0]}
+                        onChange={(option) => setSelectedFolderId(option ? option.value : null)}
+                        placeholder="Select a folder..."
+                        isSearchable
+                        styles={templateSelectStyles}
+                        maxMenuHeight={180}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Continue Button */}
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleUploadSubmit}
+                      disabled={isLoading || (!file && !existingFile)}
+                      className="flex items-center h-[46px] px-8 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-all shadow-sm hover:shadow disabled:opacity-50 w-full sm:w-auto justify-center group"
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="animate-spin h-4 w-4 mr-2" /> Uploading securely...
+                        </>
+                      ) : (
+                        <>
+                          Continue to Hierarchy <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </>
             ) : (
               <>
                 <div className="text-left">
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Your templates</label>
-
-                  <Select
-                    options={templates.map(t => ({
-                      value: t.id,
-                      label: t.name,
-                      signerCount: t.signerCount,
-                      usageCount: t.usageCount
-                    }))}
-                    value={
-                      selectedTemplateId
-                        ? templates
-                            .map(t => ({ value: t.id, label: t.name, signerCount: t.signerCount, usageCount: t.usageCount }))
-                            .find(o => o.value === selectedTemplateId) || null
-                        : null
-                    }
-                    onChange={(option) => setSelectedTemplateId(option ? option.value : null)}
-                    isLoading={templatesLoading}
-                    isClearable
-                    isSearchable
-                    placeholder="Search your templates..."
-                    noOptionsMessage={() => templatesLoading ? 'Loading templates...' : 'No templates yet — save a completed document as one to reuse it here.'}
-                    maxMenuHeight={112}
-                    styles={templateSelectStyles}
-                    formatOptionLabel={(option) => (
-                      <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-md flex items-center justify-center bg-slate-100 text-slate-500 flex-shrink-0">
-                          <LayoutTemplate className="h-4 w-4" />
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Selected template</label>
+                  
+                  {selectedTemplateId ? (
+                    <div className="border border-blue-200 bg-blue-50/50 rounded-lg p-4 flex items-center justify-between shadow-sm">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-10 w-10 rounded-md bg-blue-100 flex items-center justify-center flex-shrink-0">
+                          <LayoutTemplate className="h-5 w-5 text-blue-600" />
                         </div>
-                        <div>
-                          <div className="text-sm font-medium text-slate-900">{option.label}</div>
-                          <div className="text-xs text-slate-500">
-                            {option.signerCount} signer{option.signerCount !== 1 ? 's' : ''}
-                            {typeof option.usageCount === 'number' ? ` · used ${option.usageCount}×` : ''}
-                          </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm text-slate-900 truncate">
+                            {templates.find(t => t.id === selectedTemplateId)?.name}
+                          </p>
+                          <p className="text-xs text-slate-500 truncate mt-0.5">
+                            Ready to use
+                          </p>
                         </div>
                       </div>
-                    )}
-                  />
+                      <button 
+                        onClick={() => setIsTemplateModalOpen(true)}
+                        className="text-xs font-medium text-blue-600 hover:text-blue-700 bg-white border border-blue-200 px-3 py-1.5 rounded-md hover:bg-blue-50 transition-colors flex-shrink-0 ml-4"
+                      >
+                        Change
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setIsTemplateModalOpen(true)}
+                      className="w-full flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-300 rounded-lg hover:border-blue-400 hover:bg-slate-50 transition-all group"
+                    >
+                      <LayoutTemplate className="h-10 w-10 text-slate-400 group-hover:text-blue-500 mb-3 transition-colors" />
+                      <span className="text-sm font-medium text-slate-900 group-hover:text-blue-700 transition-colors">Browse Templates</span>
+                      <span className="text-xs text-slate-500 mt-1">Navigate folders to select a template</span>
+                    </button>
+                  )}
                 </div>
 
                 <div className="mt-8 flex justify-end">
                   <button
                     onClick={handleUseTemplateSubmit}
                     disabled={isLoading || !selectedTemplateId}
-                    className="flex items-center py-2.5 px-6 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors disabled:opacity-50"
+                    className="flex items-center h-[46px] px-8 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-all shadow-sm hover:shadow disabled:opacity-50 group"
                   >
-                    {isLoading ? 'Loading template...' : 'Continue to Hierarchy'} <ArrowRight className="ml-2 h-4 w-4" />
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="animate-spin h-4 w-4 mr-2" /> Loading template...
+                      </>
+                    ) : (
+                      <>
+                        Continue to Hierarchy <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                      </>
+                    )}
                   </button>
                 </div>
               </>

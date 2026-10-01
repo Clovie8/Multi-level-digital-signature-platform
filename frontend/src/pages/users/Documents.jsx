@@ -391,10 +391,9 @@ function RowActions({ document, currentUser, onView, onVoided, onContextMenuActi
 
 
   items.push({ separator: true });
-  // items.push({ key: 'rename', label: 'Rename', icon: Pencil, onClick: () => { onContextMenuAction('rename', { ...document, type: 'document' }) } });
   if (document.initiatorId === currentUser?.id) {
-    items.push({ key: 'move', label: 'Move to...', icon: Folder, onClick: () => { onContextMenuAction('move', { ...document, type: 'document' }) } });
-    // items.push({ key: 'delete', label: 'Delete', icon: Trash2, onClick: () => { onContextMenuAction('delete', { ...document, type: 'document' }) }, danger: true });
+    items.push({ key: 'move', label: 'Move to...', icon: Folder, onClick: () => { setIsMenuOpen(false); onContextMenuAction('move', { ...document, type: 'document' }) } });
+    items.push({ key: 'rename', label: 'Rename', icon: Pencil, onClick: () => { setIsMenuOpen(false); onContextMenuAction('rename', { ...document, type: 'document' }) } });
   }
 
   return (
@@ -1234,9 +1233,9 @@ export default function Documents() {
   };
   const [newFolderName, setNewFolderName] = useState('');
   const [isCreateFolderModalOpen, setIsCreateFolderModalOpen] = useState(false);
-  const [isRenameFolderModalOpen, setIsRenameFolderModalOpen] = useState(false);
-  const [folderToRename, setFolderToRename] = useState(null);
-  const [renameFolderName, setRenameFolderName] = useState('');
+  const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
+  const [itemToRename, setItemToRename] = useState(null);
+  const [renameValue, setRenameValue] = useState('');
   const [folderToDelete, setFolderToDelete] = useState(null);
   const [isDeletingFolder, setIsDeletingFolder] = useState(false);
   const [isSavingFolder, setIsSavingFolder] = useState(false);
@@ -1269,25 +1268,36 @@ export default function Documents() {
     }
   };
 
-  const handleRenameFolder = async (e) => {
+  const handleRename = async (e) => {
     e.preventDefault();
-    if (!renameFolderName.trim() || !folderToRename) return;
+    if (!renameValue.trim() || !itemToRename) return;
 
     setIsSavingFolder(true);
     try {
-      const res = await api.put(`/api/folders/${folderToRename.id}/rename`, {
-        name: renameFolderName
-      });
+      if (itemToRename.type === 'folder') {
+        const res = await api.put(`/api/folders/${itemToRename.id}/rename`, { name: renameValue });
+        const updatedFolder = res.data.folder || res.data;
+        setFolders(prev => prev.map(f => f.id === updatedFolder.id ? updatedFolder : f));
+        toast.success('Folder renamed successfully');
+      } else if (itemToRename.type === 'document') {
+        const res = await api.put(`/api/documents/${itemToRename.id}/rename`, { name: renameValue });
+        const updatedDoc = res.data.document;
+        setDocuments(prev => prev.map(d => d.id === updatedDoc.id ? { ...d, fileName: updatedDoc.fileName } : d));
+        if (detail && detail.id === updatedDoc.id) setDetail(prev => ({ ...prev, fileName: updatedDoc.fileName }));
+        toast.success('Document renamed successfully');
+      } else if (itemToRename.type === 'template') {
+        const res = await api.put(`/api/templates/${itemToRename.id}/rename`, { name: renameValue });
+        const updatedTemp = res.data.template;
+        setTemplates(prev => prev.map(t => t.id === updatedTemp.id ? { ...t, name: updatedTemp.fileName, fileName: updatedTemp.fileName } : t));
+        toast.success('Template renamed successfully');
+      }
       
-      const updatedFolder = res.data.folder || res.data;
-      setFolders(prev => prev.map(f => f.id === updatedFolder.id ? updatedFolder : f));
-      setFolderToRename(null);
-      setRenameFolderName('');
-      setIsRenameFolderModalOpen(false);
-      toast.success('Folder renamed successfully');
+      setItemToRename(null);
+      setRenameValue('');
+      setIsRenameModalOpen(false);
     } catch (error) {
-      console.error('Error renaming folder:', error);
-      toast.error(error.response?.data?.error || 'Failed to rename folder');
+      console.error('Error renaming:', error);
+      toast.error(error.response?.data?.error || 'Failed to rename item');
     } finally {
       setIsSavingFolder(false);
     }
@@ -1335,13 +1345,9 @@ export default function Documents() {
     } else if (action === 'use' && item.type === 'template') {
       handleUseTemplate(item);
     } else if (action === 'rename') {
-      if (item.type === 'folder') {
-        setFolderToRename(item);
-        setRenameFolderName(item.name);
-        setIsRenameFolderModalOpen(true);
-      } else {
-        toast.info('Document renaming coming soon');
-      }
+      setItemToRename(item);
+      setRenameValue(item.type === 'folder' ? item.name : (item.type === 'template' ? item.name : item.fileName));
+      setIsRenameModalOpen(true);
     } else if (action === 'move') {
       setSelectedItemsForMove([item]);
       setIsMoveModalOpen(true);
@@ -1961,7 +1967,7 @@ export default function Documents() {
       </div>
 
       {contextMenu && (
-        <ContextMenu x={contextMenu.x} y={contextMenu.y} item={contextMenu.item} onClose={() => setContextMenu(null)} onAction={handleContextMenuAction} />
+        <ContextMenu x={contextMenu.x} y={contextMenu.y} item={contextMenu.item} onClose={() => setContextMenu(null)} onAction={handleContextMenuAction} activeTab={activeTab} />
       )}
       
       {isCreateFolderModalOpen && (
@@ -1985,17 +1991,17 @@ export default function Documents() {
           </div>
         </div>
       )}
-      {isRenameFolderModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4" onClick={() => setIsRenameFolderModalOpen(false)}>
+      {isRenameModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4" onClick={() => setIsRenameModalOpen(false)}>
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
-            <form onSubmit={handleRenameFolder} className="p-6">
+            <form onSubmit={handleRename} className="p-6">
               <h3 className="text-lg font-semibold text-slate-900 mb-4">
-                Rename Folder
+                Rename {itemToRename?.type === 'folder' ? 'Folder' : itemToRename?.type === 'template' ? 'Template' : 'Document'}
               </h3>
-              <input autoFocus type="text" value={renameFolderName} onChange={e => setRenameFolderName(e.target.value)} placeholder="New folder name" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md mb-4 focus:ring-2 focus:ring-slate-900" />
+              <input autoFocus type="text" value={renameValue} onChange={e => setRenameValue(e.target.value)} placeholder={`New ${itemToRename?.type || 'item'} name`} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md mb-4 focus:ring-2 focus:ring-slate-900" />
               <div className="flex justify-end gap-3">
-                <button type="button" onClick={() => !isSavingFolder && setIsRenameFolderModalOpen(false)} disabled={isSavingFolder} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition-colors disabled:opacity-50">Cancel</button>
-                <button type="submit" disabled={!renameFolderName.trim() || renameFolderName === folderToRename?.name || isSavingFolder} className="flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors disabled:opacity-70">
+                <button type="button" onClick={() => !isSavingFolder && setIsRenameModalOpen(false)} disabled={isSavingFolder} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition-colors disabled:opacity-50">Cancel</button>
+                <button type="submit" disabled={!renameValue.trim() || renameValue === (itemToRename?.type === 'folder' ? itemToRename?.name : itemToRename?.type === 'template' ? itemToRename?.name : itemToRename?.fileName) || isSavingFolder} className="flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors disabled:opacity-70">
                   {isSavingFolder && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
                   {isSavingFolder ? 'Renaming...' : 'Rename'}
                 </button>
