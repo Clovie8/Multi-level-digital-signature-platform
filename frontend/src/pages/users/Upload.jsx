@@ -198,6 +198,7 @@ function TemplateBrowserModal({ folders, templates, onClose, onSelect }) {
 export default function Upload() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const editDocumentId = searchParams.get('edit');
@@ -605,9 +606,10 @@ export default function Upload() {
   };
 
   const handleSaveAsDraft = async () => {
+    if (isSavingDraft || isLoading) return;
     if (!validateSigners()) return;
 
-    setIsLoading(true);
+     setIsSavingDraft(true);
     try {
       const finalSigners = signers.map((s, idx) => {
         if (isInitiatorFirst && idx === 0) {
@@ -623,12 +625,14 @@ export default function Upload() {
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not save this draft.');
     } finally {
-      setIsLoading(false);
+      setIsSavingDraft(false);
     }
   };
 
   // DISPATCH HANDLER
   const handleDispatchDocument = async () => {
+    if (isLoading) return;
+
     // Validation: Check if every signer has at least one field assigned
     const signersWithoutFields = signers.filter(s => !fields.some(f => f.signerId === s.id));
     if (signersWithoutFields.length > 0) {
@@ -1314,9 +1318,9 @@ export default function Upload() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <button onClick={handleSaveAsDraft} disabled={isLoading} className="flex items-center justify-center px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 transition-colors disabled:opacity-50">
-                    {isLoading && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
-                    {isLoading ? 'Saving...' : 'Save as draft'}
+                  <button onClick={handleSaveAsDraft} disabled={isSavingDraft || isLoading} className="flex items-center justify-center px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 transition-colors disabled:opacity-50">
+                    {isSavingDraft && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
+                    {isSavingDraft ? 'Saving...' : 'Save as draft'}
                   </button>
                   <button
                     onClick={handleDispatchDocument}
