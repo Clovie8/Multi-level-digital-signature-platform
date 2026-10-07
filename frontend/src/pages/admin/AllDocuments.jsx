@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useAsyncLock } from '../../hooks/useAsyncLock';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import { Layers, FileSignature, Download, Loader2, Search, FileText, MoreVertical, Eye, Info, X, CheckCircle2 } from 'lucide-react';
@@ -31,7 +32,7 @@ function RowActions({ document, onView }) {
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [openUpward, setOpenUpward] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
+  
   const menuRef = useRef(null);
   const buttonRef = useRef(null);
 
@@ -53,8 +54,8 @@ function RowActions({ document, onView }) {
     setIsMenuOpen((prev) => !prev);
   };
 
-  const handleDownload = async () => {
-    setIsDownloading(true);
+  const [handleDownload, isDownloading] = useAsyncLock(async () => {
+    
     try {
       const res = await api.get(`/api/documents/${document.id}/download`);
       const response = await fetch(res.data.url);
@@ -73,10 +74,8 @@ function RowActions({ document, onView }) {
       setIsMenuOpen(false);
     } catch (err) {
       toast.error(err.message || 'Could not download this document.');
-    } finally {
-      setIsDownloading(false);
     }
-  };
+  });
 
   const menuItemCls = "w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
 
@@ -194,7 +193,7 @@ export default function AllDocuments() {
   // Right sidebar state
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
-  const [isDetailLoading, setIsDetailLoading] = useState(false);
+  
 
   useEffect(() => {
     setCurrentPage(1);
@@ -216,19 +215,17 @@ export default function AllDocuments() {
     }
   };
 
-  const handleOpenDetail = async (id) => {
+  const [handleOpenDetail, isDetailLoading] = useAsyncLock(async (id) => {
     setSelectedId(id);
-    setIsDetailLoading(true);
+    
     try {
       const res = await api.get(`/api/documents/${id}`);
       setDetail(res.data.document);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not load document details.');
       setSelectedId(null);
-    } finally {
-      setIsDetailLoading(false);
     }
-  };
+  });
 
   const handleCloseDetail = () => {
     setSelectedId(null);

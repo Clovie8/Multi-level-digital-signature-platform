@@ -1,6 +1,7 @@
 import MoveModal from '../../components/folders/MoveModal';
 import ShareModal from '../../components/folders/ShareModal';
 import ContextMenu from '../../components/folders/ContextMenu';
+import { useAsyncLock } from '../../hooks/useAsyncLock';
 import { DndContext, useDraggable, useDroppable, pointerWithin, MouseSensor, TouchSensor, useSensor, useSensors, DragOverlay, KeyboardSensor } from '@dnd-kit/core';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -250,9 +251,6 @@ function RowActions({ document, currentUser, onView, onVoided, onContextMenuActi
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [openUpward, setOpenUpward] = useState(false);
-  const [isSendingReminder, setIsSendingReminder] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [isVoiding, setIsVoiding] = useState(false);
   const [isVersionModalOpen, setIsVersionModalOpen] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null);
   const menuRef = useRef(null);
@@ -276,20 +274,16 @@ function RowActions({ document, currentUser, onView, onVoided, onContextMenuActi
     setIsMenuOpen((prev) => !prev);
   };
 
-  const handleSendReminder = async () => {
-    setIsSendingReminder(true);
+  const [handleSendReminder, isSendingReminder] = useAsyncLock(async () => {
     try {
       const res = await api.post(`/api/documents/${document.id}/remind`);
       toast.success(res.data.message);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not send the reminder.');
-    } finally {
-      setIsSendingReminder(false);
     }
-  };
+  });
 
-  const handleDownload = async () => {
-    setIsDownloading(true);
+  const [handleDownload, isDownloading] = useAsyncLock(async () => {
     try {
       const res = await api.get(`/api/documents/${document.id}/download`);
       const response = await fetch(res.data.url);
@@ -307,12 +301,22 @@ function RowActions({ document, currentUser, onView, onVoided, onContextMenuActi
       window.URL.revokeObjectURL(objectUrl);
     } catch (err) {
       toast.error(err.message || 'Could not download this document.');
-    } finally {
-      setIsDownloading(false);
     }
-  };
+  });
 
   const isDraft = document.status === 'draft';
+
+  const [handleConfirmAction, isVoiding] = useAsyncLock(async (reason) => {
+    try {
+      const res = await api.post(`/api/documents/${document.id}/void`, { reason });
+      toast.success(res.data.message);
+      onVoided?.();
+      setConfirmDialog(null);
+      setIsMenuOpen(false);
+    } catch (err) {
+      toast.error(err.response?.data?.error || `Could not ${isDraft ? 'delete' : 'void'} this document.`);
+    }
+  });
 
   const handleVoid = () => {
     setConfirmDialog({
@@ -321,20 +325,7 @@ function RowActions({ document, currentUser, onView, onVoided, onContextMenuActi
         ? `Delete "${document.fileName}"? This permanently removes it — it will not show up anywhere and cannot be recovered.`
         : `Void "${document.fileName}"? This cannot be undone, and any remaining signers will be notified.`,
       isDraft,
-      action: async (reason) => {
-        setIsVoiding(true);
-        try {
-          const res = await api.post(`/api/documents/${document.id}/void`, { reason });
-          toast.success(res.data.message);
-          onVoided?.();
-          setConfirmDialog(null);
-          setIsMenuOpen(false);
-        } catch (err) {
-          toast.error(err.response?.data?.error || `Could not ${isDraft ? 'delete' : 'void'} this document.`);
-        } finally {
-          setIsVoiding(false);
-        }
-      }
+      action: handleConfirmAction
     });
   };
 
@@ -523,14 +514,12 @@ function DocumentTableRow({ document, currentUser, isChecked, onCheck, onOpen, o
 function StepsTimeline({ documentId, isInitiator, steps, documentCreatedAt, documentUpdatedAt, onRefresh }) {
   const [editingStepId, setEditingStepId] = useState(null);
   const [editForm, setEditForm] = useState({ name: '', email: '' });
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleEditSave = async (stepId) => {
+  const [handleEditSave, isSubmitting] = useAsyncLock(async (stepId) => {
     if (!editForm.name.trim() || !editForm.email.trim()) {
       toast.error('Name and email are required');
       return;
     }
-    setIsSubmitting(true);
     try {
       await api.put(`/api/documents/${documentId}/steps/${stepId}`, editForm);
       toast.success('Signer updated successfully!');
@@ -538,10 +527,8 @@ function StepsTimeline({ documentId, isInitiator, steps, documentCreatedAt, docu
       if (onRefresh) onRefresh();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to update signer');
-    } finally {
-      setIsSubmitting(false);
     }
-  };
+  });
 
   return (
     <div className="space-y-3 mt-4">
@@ -702,19 +689,16 @@ function StepsTimeline({ documentId, isInitiator, steps, documentCreatedAt, docu
 }
 
 function ReviseModal({ document, onClose }) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
 
-  const handleSubmit = async () => {
-    setIsSubmitting(true);
+  const [handleSubmit, isSubmitting] = useAsyncLock(async () => {
     try {
       const res = await api.post(`/api/documents/${document.id}/revise`);
       navigate(`/upload?edit=${res.data.documentId}`);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not create the revision draft.');
-      setIsSubmitting(false);
     }
-  };
+  });
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/50 px-4">
@@ -748,11 +732,9 @@ function ReviseModal({ document, onClose }) {
 
 function ReviewPanel({ document, onRefresh }) {
   const navigate = useNavigate();
-  const [isApproving, setIsApproving] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  const handleApprove = async () => {
-    setIsApproving(true);
+  const [handleApprove, isApproving] = useAsyncLock(async () => {
     try {
       const res = await api.post(`/api/documents/${document.id}/approve`);
       toast.success(res.data.message);
@@ -760,10 +742,8 @@ function ReviewPanel({ document, onRefresh }) {
       onRefresh();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not approve this document.');
-    } finally {
-      setIsApproving(false);
     }
-  };
+  });
 
   const signerCount = document.steps.length;
 
@@ -824,7 +804,6 @@ function ReviewPanel({ document, onRefresh }) {
 function DeclineResolutionPanel({ document, onRefresh }) {
   const navigate = useNavigate();
   const [isResuming, setIsResuming] = useState(false);
-  const [isVoiding, setIsVoiding] = useState(false);
   const [isReviseModalOpen, setIsReviseModalOpen] = useState(false);
   const [voidModalOpen, setVoidModalOpen] = useState(false);
 
@@ -837,8 +816,7 @@ function DeclineResolutionPanel({ document, onRefresh }) {
     navigate(`/review/${document.id}?mode=resume`);
   };
 
-  const handleConfirmVoid = async (reason) => {
-    setIsVoiding(true);
+  const [handleConfirmVoid, isVoiding] = useAsyncLock(async (reason) => {
     try {
       const res = await api.post(`/api/documents/${document.id}/void`, { reason });
       toast.success(res.data.message);
@@ -846,10 +824,8 @@ function DeclineResolutionPanel({ document, onRefresh }) {
       onRefresh();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not void this document.');
-    } finally {
-      setIsVoiding(false);
     }
-  };
+  });
 
   return (
     <div className="mt-6">
@@ -1099,7 +1075,6 @@ export default function Documents() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [checkedIds, setCheckedIds] = useState(new Set());
   const [usingTemplateId, setUsingTemplateId] = useState(null);
-  const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
   const fileInputRef = useRef(null);
 
   
@@ -1237,8 +1212,6 @@ export default function Documents() {
   const [itemToRename, setItemToRename] = useState(null);
   const [renameValue, setRenameValue] = useState('');
   const [folderToDelete, setFolderToDelete] = useState(null);
-  const [isDeletingFolder, setIsDeletingFolder] = useState(false);
-  const [isSavingFolder, setIsSavingFolder] = useState(false);
   const [folders, setFolders] = useState([]);
 
     const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
@@ -1251,9 +1224,8 @@ export default function Documents() {
   
   
   
-  const handleDeleteFolder = async () => {
+  const [handleDeleteFolder, isDeletingFolder] = useAsyncLock(async () => {
     if (!folderToDelete) return;
-    setIsDeletingFolder(true);
     try {
       await api.delete('/api/folders/' + folderToDelete.id);
       setFolders(prev => prev.filter(f => f.id !== folderToDelete.id));
@@ -1263,16 +1235,12 @@ export default function Documents() {
     } catch (error) {
       console.error(error);
       toast.error('Failed to delete folder');
-    } finally {
-      setIsDeletingFolder(false);
     }
-  };
+  });
 
-  const handleRename = async (e) => {
+  const [handleRename, isSavingFolder] = useAsyncLock(async (e) => {
     e.preventDefault();
     if (!renameValue.trim() || !itemToRename) return;
-
-    setIsSavingFolder(true);
     try {
       if (itemToRename.type === 'folder') {
         const res = await api.put(`/api/folders/${itemToRename.id}/rename`, { name: renameValue });
@@ -1298,16 +1266,12 @@ export default function Documents() {
     } catch (error) {
       console.error('Error renaming:', error);
       toast.error(error.response?.data?.error || 'Failed to rename item');
-    } finally {
-      setIsSavingFolder(false);
     }
-  };
+  });
 
-  const handleCreateFolder = async (e) => {
+  const [handleCreateFolder, isCreatingFolder] = useAsyncLock(async (e) => {
     e.preventDefault();
     if (!newFolderName.trim()) return;
-
-    setIsSavingFolder(true);
     try {
       const res = await api.post('/api/folders', {
         name: newFolderName,
@@ -1327,10 +1291,8 @@ export default function Documents() {
       } else {
         toast.error(error.response?.data?.error || 'Failed to create folder');
       }
-    } finally {
-      setIsSavingFolder(false);
     }
-  };
+  });
 
   const handleOpenFolder = (folder) => {
     setCurrentFolderId(folder.id);
@@ -1473,7 +1435,7 @@ export default function Documents() {
     if (selectedId) fetchDetail(selectedId);
   };
 
-  const handleUseTemplate = async (template) => {
+  const [handleUseTemplate, isUsingTemplate] = useAsyncLock(async (template) => {
     setUsingTemplateId(template.id);
     try {
       const res = await api.post(`/api/templates/${template.id}/use`);
@@ -1485,9 +1447,9 @@ export default function Documents() {
     } finally {
       setUsingTemplateId(null);
     }
-  };
+  });
 
-  const handleUploadTemplate = async (e) => {
+  const [handleUploadTemplate, isUploadingTemplate] = useAsyncLock(async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -1495,8 +1457,6 @@ export default function Documents() {
       toast.error('Only PDF files are allowed.');
       return;
     }
-
-    setIsUploadingTemplate(true);
     const formData = new FormData();
     formData.append('pdf_file', file);
 
@@ -1509,12 +1469,11 @@ export default function Documents() {
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to upload template.');
     } finally {
-      setIsUploadingTemplate(false);
       if (fileInputRef.current) {
         fileInputRef.current.value = ''; 
       }
     }
-  };
+  });
 
   const currentFolderDocs = useMemo(() => {
     return documents.filter(d => {
@@ -1981,10 +1940,10 @@ export default function Documents() {
               </h3>
               <input autoFocus type="text" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} placeholder="Folder name" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md mb-4 focus:ring-2 focus:ring-slate-900" />
               <div className="flex justify-end gap-3">
-                <button type="button" onClick={() => !isSavingFolder && setIsCreateFolderModalOpen(false)} disabled={isSavingFolder} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition-colors disabled:opacity-50">Cancel</button>
-                <button type="submit" disabled={!newFolderName.trim() || isSavingFolder} className="flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors disabled:opacity-70">
-                  {isSavingFolder && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
-                  {isSavingFolder ? 'Creating...' : 'Create'}
+                <button type="button" onClick={() => !isCreatingFolder && setIsCreateFolderModalOpen(false)} disabled={isCreatingFolder} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition-colors disabled:opacity-50">Cancel</button>
+                <button type="submit" disabled={!newFolderName.trim() || isCreatingFolder} className="flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors disabled:opacity-70">
+                  {isCreatingFolder && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
+                  {isCreatingFolder ? 'Creating...' : 'Create'}
                 </button>
               </div>
             </form>

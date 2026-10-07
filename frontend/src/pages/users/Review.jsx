@@ -1,3 +1,4 @@
+import { useAsyncLock } from '../../hooks/useAsyncLock';
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation, useOutletContext } from 'react-router-dom';
 import api from '../../lib/api';
@@ -65,8 +66,8 @@ export default function Review() {
   const [fileUrl, setFileUrl] = useState(null);
   const [fileName, setFileName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const [isApproving, setIsApproving] = useState(false);
-  const [isResuming, setIsResuming] = useState(false);
+  
+  
   const [isDownloading, setIsDownloading] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -184,8 +185,7 @@ export default function Review() {
     }
   };
 
-  const handleApprove = async () => {
-    setIsApproving(true);
+  const [handleApprove, isApproving] = useAsyncLock(async () => {
     try {
       const res = await api.post(`/api/documents/${id}/approve`);
       toast.success(res.data.message);
@@ -193,13 +193,10 @@ export default function Review() {
       navigate('/documents');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not approve this document.');
-    } finally {
-      setIsApproving(false);
     }
-  };
+  });
 
-  const handleResume = async () => {
-    setIsResuming(true);
+  const [handleResume, isResuming] = useAsyncLock(async () => {
     try {
       await api.post(`/api/documents/${id}/resume`);
       toast.success('Document has been resumed. The signer has been re-notified.');
@@ -207,10 +204,18 @@ export default function Review() {
       navigate('/documents');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not resume this document.');
-    } finally {
-      setIsResuming(false);
     }
-  };
+  });
+
+  const [handleUseTemplate, isUsingTemplate] = useAsyncLock(async () => {
+    try {
+      const res = await api.post(`/api/templates/${id}/use`);
+      toast.success(`Started from template.`);
+      navigate(`/upload?edit=${res.data.document.id}`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not start a document from this template.');
+    }
+  });
 
   return (
     <div className="min-h-full bg-slate-50 flex flex-col">
@@ -275,18 +280,12 @@ export default function Review() {
           )}
           {isTemplate && (
             <button
-              onClick={async () => {
-                try {
-                  const res = await api.post(`/api/templates/${id}/use`);
-                  toast.success(`Started from template.`);
-                  navigate(`/upload?edit=${res.data.document.id}`);
-                } catch (err) {
-                  toast.error(err.response?.data?.error || 'Could not start a document from this template.');
-                }
-              }}
-              className="flex items-center gap-1.5 py-1.5 px-4 bg-slate-900 text-white text-sm font-semibold rounded-md hover:bg-slate-800 transition-colors"
+              onClick={handleUseTemplate}
+              disabled={isUsingTemplate}
+              className="flex items-center gap-1.5 py-1.5 px-4 bg-slate-900 text-white text-sm font-semibold rounded-md hover:bg-slate-800 transition-colors disabled:opacity-50"
             >
-              Use Template
+              {isUsingTemplate && <Loader2 className="w-4 h-4 animate-spin" />}
+              {isUsingTemplate ? 'Starting...' : 'Use Template'}
             </button>
           )}
         </div>
