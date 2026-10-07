@@ -1,47 +1,54 @@
-import { useState, useEffect, useRef } from 'react';
-import { useAsyncLock } from '../../hooks/useAsyncLock';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import api from '../../lib/api';
-import toast from 'react-hot-toast';
-import { Document, Page, pdfjs } from 'react-pdf';
-import { PenTool, CheckCircle, ChevronLeft, ChevronRight, X, Upload, Lock, Loader2 } from 'lucide-react';
-import SignatureCanvas from 'react-signature-canvas';
-import { Rnd } from 'react-rnd';
-import ReactCrop from 'react-image-crop';
-import 'react-image-crop/dist/ReactCrop.css'
-import 'react-pdf/dist/Page/AnnotationLayer.css';
-import 'react-pdf/dist/Page/TextLayer.css';
+import { useState, useEffect, useRef } from "react";
+import { useAsyncLock } from "../../hooks/useAsyncLock";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import api from "../../lib/api";
+import toast from "react-hot-toast";
+import { Document, Page, pdfjs } from "react-pdf";
+import {
+  PenTool,
+  CheckCircle,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  Upload,
+  Lock,
+  Loader2,
+} from "lucide-react";
+import SignatureCanvas from "react-signature-canvas";
+import ReactCrop from "react-image-crop";
+import "react-image-crop/dist/ReactCrop.css";
+import "react-pdf/dist/Page/AnnotationLayer.css";
+import "react-pdf/dist/Page/TextLayer.css";
 
 // Initialize PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
+  "pdfjs-dist/build/pdf.worker.min.mjs",
   import.meta.url,
 ).toString();
 
-
 const PinInputBox = ({ pin, setPin }) => {
   const inputs = useRef([]);
-  const [pinArray, setPinArray] = useState(Array(4).fill(''));
+  const [pinArray, setPinArray] = useState(Array(4).fill(""));
 
   useEffect(() => {
-    if (!pin) setPinArray(Array(4).fill(''));
+    if (!pin) setPinArray(Array(4).fill(""));
   }, [pin]);
 
   const updatePin = (newArray) => {
     setPinArray(newArray);
-    setPin(newArray.join(''));
+    setPin(newArray.join(""));
   };
 
   const handleChange = (e, index) => {
     const val = e.target.value;
     if (!val) {
       const newPin = [...pinArray];
-      newPin[index] = '';
+      newPin[index] = "";
       updatePin(newPin);
       return;
     }
 
-    const char = val.replace(/\D/g, '').slice(-1);
+    const char = val.replace(/\D/g, "").slice(-1);
     if (!char) return;
 
     const newPin = [...pinArray];
@@ -54,10 +61,10 @@ const PinInputBox = ({ pin, setPin }) => {
   };
 
   const handleKeyDown = (e, index) => {
-    if (e.key === 'Backspace' && !pinArray[index] && index > 0) {
+    if (e.key === "Backspace" && !pinArray[index] && index > 0) {
       e.preventDefault();
       const newPin = [...pinArray];
-      newPin[index - 1] = '';
+      newPin[index - 1] = "";
       inputs.current[index - 1].focus();
       updatePin(newPin);
     }
@@ -65,7 +72,10 @@ const PinInputBox = ({ pin, setPin }) => {
 
   const handlePaste = (e) => {
     e.preventDefault();
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 4);
+    const pasted = e.clipboardData
+      .getData("text")
+      .replace(/\D/g, "")
+      .slice(0, 4);
     if (pasted) {
       setPin(pasted);
       const nextIndex = pasted.length < 4 ? pasted.length : 3;
@@ -81,7 +91,7 @@ const PinInputBox = ({ pin, setPin }) => {
           ref={(el) => (inputs.current[i] = el)}
           type="password"
           maxLength="1"
-          value={pin[i] || ''}
+          value={pin[i] || ""}
           onChange={(e) => handleChange(e, i)}
           onKeyDown={(e) => handleKeyDown(e, i)}
           onPaste={i === 0 ? handlePaste : undefined}
@@ -92,14 +102,13 @@ const PinInputBox = ({ pin, setPin }) => {
   );
 };
 
-
 export default function Sign() {
   const { token } = useParams(); // Grab the secure token from the URL
   const navigate = useNavigate();
 
   //Gran the OTP from URL
   const [searchParams] = useSearchParams();
-  const urlOtp = searchParams.get('otp');
+  const urlOtp = searchParams.get("otp");
 
   // Document & Signer State
   const [isLoading, setIsLoading] = useState(true);
@@ -115,11 +124,11 @@ export default function Sign() {
   // Signature Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeFieldId, setActiveFieldId] = useState(null);
-  const [signatureText, setSignatureText] = useState('');
+  const [signatureText, setSignatureText] = useState("");
   const sigPadRef = useRef(null);
   const padContainerRef = useRef(null);
-  const [signMode, setSignMode] = useState('draw'); // 'draw' or 'type'
-  const [typeFontSize, setTypeFontSize] = useState(24);
+  const [signMode, setSignMode] = useState("draw"); // 'draw' or 'type'
+  const [typeFontSize] = useState(24);
   const [padSize, setPadSize] = useState({ width: 450, height: 160 });
   const isResizing = useRef(false);
 
@@ -128,17 +137,16 @@ export default function Sign() {
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth < 800) {
-        setScale((window.innerWidth - 32) / 750); 
+        setScale((window.innerWidth - 32) / 750);
       } else {
         setScale(1);
       }
     };
-    
-    window.addEventListener('resize', handleResize);
-    handleResize(); 
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
 
+    window.addEventListener("resize", handleResize);
+    handleResize();
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   // Image Upload & Cropping State
   const [uploadedImage, setUploadedImage] = useState(null);
@@ -146,47 +154,43 @@ export default function Sign() {
   const [completedCrop, setCompletedCrop] = useState(null);
   const imgRef = useRef(null);
   const [saveForFuture, setSaveForFuture] = useState(false);
-  const [isAdopting, setIsAdopting] = useState(false); // Used for upload loading state
-  const [isCompleting, setIsCompleting] = useState(false);
-  const [isDeclining, setIsDeclining] = useState(false);
   const [savedSignatures, setSavedSignatures] = useState([]);
   const [selectedSavedSignature, setSelectedSavedSignature] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
 
   // Vault Security State
-  const [vaultPin, setVaultPin] = useState('');
+  const [vaultPin, setVaultPin] = useState("");
   const [isVaultUnlocked, setIsVaultUnlocked] = useState(false);
   const [hasExistingPin, setHasExistingPin] = useState(false);
-  const [isCheckingSecurity, setIsCheckingSecurity] = useState(false); 
-  const [isUnlocking, setIsUnlocking] = useState(false); 
+  const [isCheckingSecurity, setIsCheckingSecurity] = useState(false);
+  const [isUnlocking, setIsUnlocking] = useState(false);
   const [isRequestingReset, setIsRequestingReset] = useState(false);
   const [isConfirmingReset, setIsConfirmingReset] = useState(false);
   const [isResettingPin, setIsResettingPin] = useState(false);
-  const [resetOtp, setResetOtp] = useState('');
-  const [newPin, setNewPin] = useState('');
+  const [resetOtp, setResetOtp] = useState("");
+  const [newPin, setNewPin] = useState("");
 
   // Track which fields have been completed
   const [completedFields, setCompletedFields] = useState({});
-
 
   // OTP Authentication State
   const [requiresOtp, setRequiresOtp] = useState(false);
 
   // Decline State
   const [isDeclineModalOpen, setIsDeclineModalOpen] = useState(false);
-  const [declineReasonRadio, setDeclineReasonRadio] = useState('');
-  const [declineReasonText, setDeclineReasonText] = useState('');
+  const [declineReasonRadio, setDeclineReasonRadio] = useState("");
+  const [declineReasonText, setDeclineReasonText] = useState("");
 
   // Fix Signature Canvas Scaling
   useEffect(() => {
-    if (isModalOpen && signMode === 'draw') {
+    if (isModalOpen && signMode === "draw") {
       // Small timeout to allow DOM to render the modal size
       setTimeout(() => {
         if (padContainerRef.current) {
           setPadSize({
             width: padContainerRef.current.offsetWidth,
-            height: padContainerRef.current.offsetHeight
+            height: padContainerRef.current.offsetHeight,
           });
         }
       }, 50);
@@ -197,7 +201,9 @@ export default function Sign() {
   useEffect(() => {
     const fetchSigningData = async () => {
       try {
-        const requestUrl = urlOtp ? `/api/documents/sign/${token}?otp=${urlOtp}` : `/api/documents/sign/${token}`;
+        const requestUrl = urlOtp
+          ? `/api/documents/sign/${token}?otp=${urlOtp}`
+          : `/api/documents/sign/${token}`;
         const res = await api.get(requestUrl);
 
         if (res.data.requiresOtp) {
@@ -210,11 +216,12 @@ export default function Sign() {
         setSignerInfo(res.data.signer);
         setFields(res.data.fields || []);
         setSavedSignatures(res.data.savedSignatures || []);
-
       } catch (error) {
-        console.error('Failed to load document:', error);
-        toast.error(error.response?.data?.error || 'Invalid or expired signing link.');
-        navigate('/login');
+        console.error("Failed to load document:", error);
+        toast.error(
+          error.response?.data?.error || "Invalid or expired signing link.",
+        );
+        navigate("/login");
       } finally {
         setIsLoading(false);
       }
@@ -222,7 +229,6 @@ export default function Sign() {
 
     if (token) fetchSigningData();
   }, [token, navigate]);
-
 
   const onDocumentLoadSuccess = ({ numPages }) => {
     setTotalPages(numPages);
@@ -238,16 +244,16 @@ export default function Sign() {
         setScale(newScale);
       }
     };
-    window.addEventListener('resize', calculateScale);
+    window.addEventListener("resize", calculateScale);
     calculateScale(); // initial calc
-    return () => window.removeEventListener('resize', calculateScale);
+    return () => window.removeEventListener("resize", calculateScale);
   }, [documentFile]);
 
   // Continuous Scroll Functions
   const handleScroll = (e) => {
     const container = e.target;
     const scrollPosition = container.scrollTop;
-    
+
     // Find the page currently most visible in the viewport
     let bestPage = 1;
     let minDistance = Infinity;
@@ -271,10 +277,10 @@ export default function Sign() {
 
   const scrollToPage = (pageNum) => {
     if (pageNum < 1 || pageNum > totalPages) return;
-    
+
     const pageEl = document.getElementById(`page-container-${pageNum}`);
     if (pageEl) {
-      pageEl.scrollIntoView({ behavior: 'smooth' });
+      pageEl.scrollIntoView({ behavior: "smooth" });
     } else {
       setCurrentPage(pageNum); // Fallback if element not found
     }
@@ -282,45 +288,54 @@ export default function Sign() {
 
   const handleFieldClick = (field) => {
     setActiveFieldId(field.id);
-    if (field.type === 'Signature') {
-      setSignMode('draw');
+    if (field.type === "Signature") {
+      setSignMode("draw");
       setIsModalOpen(true);
-      if (!signatureText) setSignatureText(signerInfo?.name || '');
-    } else if (field.type === 'Initial') {
+      if (!signatureText) setSignatureText(signerInfo?.name || "");
+    } else if (field.type === "Initial") {
       if (!completedFields[field.id]) {
-        let init = '';
+        let init = "";
         if (signerInfo?.name) {
-          const parts = signerInfo.name.split(' ');
+          const parts = signerInfo.name.split(" ");
           if (parts.length >= 2) {
             init = (parts[0][0] + parts[1][0]).toUpperCase();
           } else {
             init = parts[0].substring(0, 2).toUpperCase();
           }
         }
-        setCompletedFields(prev => ({ ...prev, [field.id]: `TYPED::24::${init}` }));
+        setCompletedFields((prev) => ({
+          ...prev,
+          [field.id]: `TYPED::24::${init}`,
+        }));
       } else {
-        setSignMode('draw');
+        setSignMode("draw");
         setIsModalOpen(true);
         if (!signatureText) {
-           const val = completedFields[field.id];
-           if (val.startsWith('TYPED::')) {
-             setSignatureText(val.split('::').slice(2).join('::'));
-           }
+          const val = completedFields[field.id];
+          if (val.startsWith("TYPED::")) {
+            setSignatureText(val.split("::").slice(2).join("::"));
+          }
         }
       }
-    } else if (field.type === 'Stamp') {
-      setSignMode('upload');
+    } else if (field.type === "Stamp") {
+      setSignMode("upload");
       setIsModalOpen(true);
-    } else if (field.type === 'Date') {
+    } else if (field.type === "Date") {
       if (!completedFields[field.id]) {
-        const today = new Date().toISOString().split('T')[0];
+        const today = new Date().toISOString().split("T")[0];
         const fontSize = field.fontSize || 14;
-        setCompletedFields(prev => ({ ...prev, [field.id]: `TYPED::${fontSize}::${today}` }));
+        setCompletedFields((prev) => ({
+          ...prev,
+          [field.id]: `TYPED::${fontSize}::${today}`,
+        }));
       }
-    } else if (field.type === 'Name') {
+    } else if (field.type === "Name") {
       if (!completedFields[field.id] && signerInfo?.name) {
         const fontSize = field.fontSize || 14;
-        setCompletedFields(prev => ({ ...prev, [field.id]: `TYPED::${fontSize}::${signerInfo.name}` }));
+        setCompletedFields((prev) => ({
+          ...prev,
+          [field.id]: `TYPED::${fontSize}::${signerInfo.name}`,
+        }));
       }
     }
   };
@@ -328,91 +343,109 @@ export default function Sign() {
   const handleForgotPin = async () => {
     setIsRequestingReset(true);
     try {
-      await api.post(`/api/signatures/reset-pin-request`, { email: signerInfo.email });
+      await api.post(`/api/signatures/reset-pin-request`, {
+        email: signerInfo.email,
+      });
       setIsResettingPin(true);
-      toast.success('Check your email for the reset code.');
+      toast.success("Check your email for the reset code.");
     } catch (error) {
-      toast.error('Failed to request reset.');
+      toast.error("Failed to request reset.");
     } finally {
       setIsRequestingReset(false);
     }
   };
 
   const handleConfirmPinReset = async () => {
-    if (newPin.length !== 4) return toast.error('PIN must be exactly 4 digits.');
-    setIsConfirmingReset(true); 
+    if (newPin.length !== 4)
+      return toast.error("PIN must be exactly 4 digits.");
+    setIsConfirmingReset(true);
     try {
       await api.post(`/api/signatures/reset-pin-confirm`, {
         email: signerInfo.email,
         otp: resetOtp,
-        newPin: newPin
+        newPin: newPin,
       });
       setIsResettingPin(false);
-      setResetOtp('');
-      setNewPin('');
-      setVaultPin(newPin); 
-      toast.success('PIN successfully updated. You may now proceed.');
+      setResetOtp("");
+      setNewPin("");
+      setVaultPin(newPin);
+      toast.success("PIN successfully updated. You may now proceed.");
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Invalid reset code.');
+      toast.error(error.response?.data?.error || "Invalid reset code.");
     } finally {
-      setIsConfirmingReset(false); 
+      setIsConfirmingReset(false);
     }
   };
 
   // 3. Adopt Signature and Apply to Field
-  const handleAdoptSignature = async () => {
-
+  const [handleAdoptSignature, isAdopting] = useAsyncLock(async () => {
     try {
       // Helper to apply signature to all initial fields if an Initial is active
       const applyToFields = (dataToSave, imgUrlToSave = null) => {
-        const targetField = fields.find(f => f.id === activeFieldId);
-        
-        if (targetField && targetField.type === 'Initial') {
+        const targetField = fields.find((f) => f.id === activeFieldId);
+
+        if (targetField && targetField.type === "Initial") {
           const updates = {};
           let newFieldsState = fields;
-          
+
           if (imgUrlToSave) {
-            newFieldsState = fields.map(f => 
-              (f.type === 'Initial' && f.signerId === targetField.signerId) ? { ...f, imageUrl: imgUrlToSave } : f
+            newFieldsState = fields.map((f) =>
+              f.type === "Initial" && f.signerId === targetField.signerId
+                ? { ...f, imageUrl: imgUrlToSave }
+                : f,
             );
             setFields(newFieldsState);
           }
-          
-          newFieldsState.filter(f => f.type === 'Initial' && f.signerId === targetField.signerId).forEach(f => {
-             updates[f.id] = dataToSave;
-          });
-          setCompletedFields(prev => ({ ...prev, ...updates }));
+
+          newFieldsState
+            .filter(
+              (f) =>
+                f.type === "Initial" && f.signerId === targetField.signerId,
+            )
+            .forEach((f) => {
+              updates[f.id] = dataToSave;
+            });
+          setCompletedFields((prev) => ({ ...prev, ...updates }));
         } else {
           if (imgUrlToSave) {
-             setFields(fields.map(f => f.id === activeFieldId ? { ...f, imageUrl: imgUrlToSave } : f));
+            setFields(
+              fields.map((f) =>
+                f.id === activeFieldId ? { ...f, imageUrl: imgUrlToSave } : f,
+              ),
+            );
           }
-          setCompletedFields(prev => ({ ...prev, [activeFieldId]: dataToSave }));
+          setCompletedFields((prev) => ({
+            ...prev,
+            [activeFieldId]: dataToSave,
+          }));
         }
       };
 
-      if (signMode === 'draw') {
-        if (!sigPadRef.current || sigPadRef.current.isEmpty()) return toast.error('Please draw your signature.');
-        const drawnDataURL = sigPadRef.current.getCanvas().toDataURL('image/png');
+      if (signMode === "draw") {
+        if (!sigPadRef.current || sigPadRef.current.isEmpty())
+          return toast.error("Please draw your signature.");
+        const drawnDataURL = sigPadRef.current
+          .getCanvas()
+          .toDataURL("image/png");
         applyToFields(drawnDataURL);
         setIsModalOpen(false);
-
-      } else if (signMode === 'type') {
-        if (!signatureText.trim()) return toast.error('Please enter your text/name.');
+      } else if (signMode === "type") {
+        if (!signatureText.trim())
+          return toast.error("Please enter your text/name.");
         applyToFields(`TYPED::${typeFontSize}::${signatureText}`);
         setIsModalOpen(false);
-
-      } else if (signMode === 'upload') {
-        if (!completedCrop || !imgRef.current) return toast.error('Please crop your uploaded signature.');
-        setIsAdopting(true);
+      } else if (signMode === "upload") {
+        if (!completedCrop || !imgRef.current)
+          return toast.error("Please crop your uploaded signature.");
 
         // 1. Client-Side Cropping & Transparency Filter
         const image = imgRef.current;
-        const canvas = document.createElement('canvas');
+        const canvas = document.createElement("canvas");
         const scaleX = image.naturalWidth / image.width;
         const scaleY = image.naturalHeight / image.height;
         canvas.width = completedCrop.width;
         canvas.height = completedCrop.height;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext("2d");
 
         // Draw cropped area
         ctx.drawImage(
@@ -421,90 +454,92 @@ export default function Sign() {
           completedCrop.y * scaleY,
           completedCrop.width * scaleX,
           completedCrop.height * scaleY,
-          0, 0, completedCrop.width, completedCrop.height
+          0,
+          0,
+          completedCrop.width,
+          completedCrop.height,
         );
 
         // Process transparency (convert white background to transparent)
         const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imgData.data;
         for (let i = 0; i < data.length; i += 4) {
-          const r = data[i], g = data[i+1], b = data[i+2];
-          if (r > 200 && g > 200 && b > 200) { 
-            data[i+3] = 0; // Set alpha to 0 (transparent) for white pixels
+          const r = data[i],
+            g = data[i + 1],
+            b = data[i + 2];
+          if (r > 200 && g > 200 && b > 200) {
+            data[i + 3] = 0; // Set alpha to 0 (transparent) for white pixels
           }
         }
         ctx.putImageData(imgData, 0, 0);
 
         // 2. Convert to Blob & Upload to Phase 2 Endpoint
-        const processedBase64 = canvas.toDataURL('image/png');
+        const processedBase64 = canvas.toDataURL("image/png");
         const processedBlob = await (await fetch(processedBase64)).blob();
-        
+
         const formData = new FormData();
-        formData.append('signatureImage', processedBlob, 'signature.png');
-        formData.append('signerName', signerInfo?.name || 'Guest Signer');
-        formData.append('signerEmail', signerInfo?.email || 'guest@example.com');
-        formData.append('saveForFuture', saveForFuture); 
+        formData.append("signatureImage", processedBlob, "signature.png");
+        formData.append("signerName", signerInfo?.name || "Guest Signer");
+        formData.append(
+          "signerEmail",
+          signerInfo?.email || "guest@example.com",
+        );
+        formData.append("saveForFuture", saveForFuture);
 
         if (saveForFuture) {
           if (!vaultPin || vaultPin.length !== 4) {
-            setIsAdopting(false);
-            return toast.error('Your secure PIN must be exactly 4 digits.');
+            return toast.error("Your secure PIN must be exactly 4 digits.");
           }
-          formData.append('pin', vaultPin);
+          formData.append("pin", vaultPin);
         }
 
-        const uploadRes = await api.post('/api/signatures/upload', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
+        const uploadRes = await api.post("/api/signatures/upload", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
         });
 
         // 3. Save Base64 for instant UI preview, and inject R2 URL into the payload for the backend
         applyToFields(processedBase64, uploadRes.data.signature.signature_url);
-        
+
         setIsModalOpen(false);
         setUploadedImage(null); // Reset for next time
+      } else if (signMode === "saved") {
+        if (!selectedSavedSignature)
+          return toast.error("Please select a saved signature.");
 
-      } else if (signMode === 'saved') {
-        if (!selectedSavedSignature) return toast.error('Please select a saved signature.');
-        
-        setIsAdopting(true);
         try {
-            // Fetch the image from the secure URL and convert it to Base64 for the PDF stamper
-            const response = await fetch(selectedSavedSignature.displayUrl, { 
-                mode: 'cors',
-                cache: 'no-cache' 
-            });
-            const blob = await response.blob();
-            const reader = new FileReader();
-            
-            reader.onloadend = () => {
-                // Inject the actual Base64 image data so the PDF stamper can see it
-                applyToFields(reader.result, selectedSavedSignature.originalKey);
-                
-                setIsModalOpen(false);
-                setIsAdopting(false);
-            };
-            
-            reader.readAsDataURL(blob);
+          // Fetch the image from the secure URL and convert it to Base64 for the PDF stamper
+          const response = await fetch(selectedSavedSignature.displayUrl, {
+            mode: "cors",
+            cache: "no-cache",
+          });
+          const blob = await response.blob();
+          const reader = new FileReader();
+
+          reader.onloadend = () => {
+            // Inject the actual Base64 image data so the PDF stamper can see it
+            applyToFields(reader.result, selectedSavedSignature.originalKey);
+
+            setIsModalOpen(false);
+          };
+
+          reader.readAsDataURL(blob);
         } catch (error) {
-            console.error("Failed to load saved image for stamping:", error);
-            toast.error("Failed to load the saved signature.");
-            setIsAdopting(false);
+          console.error("Failed to load saved image for stamping:", error);
+          toast.error("Failed to load the saved signature.");
         }
       }
     } catch (err) {
       console.error("Error adopting signature:", err);
-      const errorMessage = err.response?.data?.error || `Failed to capture signature: ${err.message}`;
+      const errorMessage =
+        err.response?.data?.error ||
+        `Failed to capture signature: ${err.message}`;
       toast.error(errorMessage);
-      
-    } finally {
-      setIsAdopting(false);
     }
-  };
-
+  });
   const handleImageUpload = (e) => {
     if (e.target.files && e.target.files.length > 0) {
       const reader = new FileReader();
-      reader.addEventListener('load', () => setUploadedImage(reader.result));
+      reader.addEventListener("load", () => setUploadedImage(reader.result));
       reader.readAsDataURL(e.target.files[0]);
     }
   };
@@ -512,89 +547,97 @@ export default function Sign() {
   const handleDeleteSignature = async (e, id) => {
     e.preventDefault();
     e.stopPropagation();
-    
-    setDeletingId(id); 
+
+    setDeletingId(id);
     try {
       await api.delete(`/api/signatures/${id}`);
-      
-      const remainingSignatures = savedSignatures.filter(sig => sig.id !== id);
+
+      const remainingSignatures = savedSignatures.filter(
+        (sig) => sig.id !== id,
+      );
       setSavedSignatures(remainingSignatures);
-      
+
       if (selectedSavedSignature?.id === id) setSelectedSavedSignature(null);
-      setConfirmDeleteId(null); 
-      
+      setConfirmDeleteId(null);
+
       if (remainingSignatures.length === 0) {
-        setSignMode('upload');
+        setSignMode("upload");
       }
 
-      toast.success('Signature removed.');
+      toast.success("Signature removed.");
     } catch (error) {
       console.error(error);
-      toast.error('Failed to remove signature.');
+      toast.error("Failed to remove signature.");
     } finally {
-      setDeletingId(null); 
+      setDeletingId(null);
     }
   };
 
   // 4. Final Submission
-  const handleCompleteDocument = async () => {
+  const [handleCompleteDocument, isCompleting] = useAsyncLock(async () => {
     // Check if all required fields are filled
     if (Object.keys(completedFields).length < fields.length) {
-      return toast.error('Please complete all assigned fields before finishing.');
+      return toast.error(
+        "Please complete all assigned fields before finishing.",
+      );
     }
 
-    // setIsLoading(true);
     try {
       const res = await api.post(`/api/documents/sign/${token}/complete`, {
         completedFields,
         updatedFields: fields,
-        pin: vaultPin
+        pin: vaultPin,
       });
 
-      toast.success(res.data.message || 'Document signed successfully.');
+      toast.success(res.data.message || "Document signed successfully.");
 
-      const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+      const isAuthenticated =
+        localStorage.getItem("isAuthenticated") === "true";
       if (isAuthenticated) {
-        navigate('/'); // Send the Initiator back to their Dashboard
+        navigate("/"); // Send the Initiator back to their Dashboard
       } else {
-        navigate('/login'); // Send third-party signers away from the canvas
+        navigate("/login"); // Send third-party signers away from the canvas
       }
-
     } catch (error) {
-      console.error('Failed to submit:', error);
-      toast.error('Failed to save signature. Please try again.');
-      // setIsLoading(false);
+      console.error("Failed to submit:", error);
+      toast.error("Failed to save signature. Please try again.");
     }
-  };
+  });
 
   const handleDeclineClick = () => {
     setIsDeclineModalOpen(true);
   };
 
-  const handleConfirmDecline = async () => {
-    const finalReason = declineReasonRadio === 'Other' ? declineReasonText : declineReasonRadio;
+  const [handleConfirmDecline, isDeclining] = useAsyncLock(async () => {
+    const finalReason =
+      declineReasonRadio === "Other" ? declineReasonText : declineReasonRadio;
     if (!finalReason.trim()) {
-      toast.error('Please provide a reason for declining.');
+      toast.error("Please provide a reason for declining.");
       return;
     }
 
-    setIsDeclining(true);
     try {
       await api.post(`/api/documents/sign/${token}/decline`, {
-        reason: finalReason
+        reason: finalReason,
       });
-      toast.success('Document declined. The initiator has been notified.');
+      toast.success("Document declined. The initiator has been notified.");
       setIsDeclineModalOpen(false);
-      navigate('/login');
+      navigate("/login");
     } catch (error) {
-      console.error('Failed to decline:', error);
-      toast.error(error.response?.data?.error || 'Failed to decline document. Please try again.');
-      setIsDeclining(false);
+      console.error("Failed to decline:", error);
+      toast.error(
+        error.response?.data?.error ||
+          "Failed to decline document. Please try again.",
+      );
     }
-  };
+  });
 
   if (isLoading) {
-    return <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">Loading secure document...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">
+        Loading secure document...
+      </div>
+    );
   }
 
   if (requiresOtp) {
@@ -606,12 +649,15 @@ export default function Sign() {
               <X className="h-8 w-8" />
             </div>
           </div>
-          <h2 className="text-2xl font-bold text-slate-800">Secure Link Expired</h2>
+          <h2 className="text-2xl font-bold text-slate-800">
+            Secure Link Expired
+          </h2>
           <p className="text-slate-500 mt-2 mb-6">
-            For your security, this document link is invalid or has expired. Please contact the initiator to request a new link.
+            For your security, this document link is invalid or has expired.
+            Please contact the initiator to request a new link.
           </p>
           <button
-            onClick={() => navigate('/login')}
+            onClick={() => navigate("/login")}
             className="w-full bg-slate-800 hover:bg-slate-900 text-white font-medium py-3 px-4 rounded-lg transition-colors"
           >
             Return Home
@@ -633,9 +679,9 @@ export default function Sign() {
   const pendingFields = [];
   let hasAddedInitial = false;
 
-  fields.forEach(f => {
+  fields.forEach((f) => {
     if (completedFields[f.id]) return; // Skip if already signed
-    if (f.type === 'Initial') {
+    if (f.type === "Initial") {
       if (!hasAddedInitial) {
         pendingFields.push(f);
         hasAddedInitial = true; // Never add another initial to the Action Guide
@@ -644,13 +690,14 @@ export default function Sign() {
       pendingFields.push(f);
     }
   });
-  
+
   // Group the missing fields by their page number
   const fieldsByPage = pendingFields.reduce((acc, field) => {
     if (!acc[field.page]) acc[field.page] = [];
-    
+
     // Rename 'Initial' so the user understands it applies to the whole document
-    const displayType = field.type === 'Initial' ? 'Initial (All Pages)' : field.type;
+    const displayType =
+      field.type === "Initial" ? "Initial (All Pages)" : field.type;
     if (!acc[field.page].includes(displayType)) {
       acc[field.page].push(displayType);
     }
@@ -659,26 +706,39 @@ export default function Sign() {
 
   return (
     <div className="flex flex-col h-screen bg-[#FAFAFA] font-sans overflow-hidden">
-
       {/* PUBLIC HEADER - Clean and locked down */}
       <header className="flex items-center justify-between px-6 h-16 bg-white border-b border-slate-200 shadow-sm z-10 shrink-0">
         <div className="flex items-center">
-          <img src="/DSign Logo.svg" alt="DSign Logo" className="h-10 w-10 mr-3 rounded-lg object-contain flex-shrink-0" />
-          <span className="text-xl font-bold tracking-tight text-slate-900">DSign</span>
+          <img
+            src="/DSign Logo.svg"
+            alt="DSign Logo"
+            className="h-10 w-10 mr-3 rounded-lg object-contain flex-shrink-0"
+          />
+          <span className="text-xl font-bold tracking-tight text-slate-900">
+            DSign
+          </span>
         </div>
 
         <div className="flex items-center space-x-4">
           <div className="hidden sm:block text-right mr-4">
-            <p className="text-xs text-slate-500 uppercase tracking-wider font-bold">Signing As</p>
-            <p className="text-sm font-semibold text-slate-900">{signerInfo?.name || 'Guest Signer'}</p>
+            <p className="text-xs text-slate-500 uppercase tracking-wider font-bold">
+              Signing As
+            </p>
+            <p className="text-sm font-semibold text-slate-900">
+              {signerInfo?.name || "Guest Signer"}
+            </p>
           </div>
           <button
             onClick={handleCompleteDocument}
             disabled={isCompleting || isDeclining}
             className="flex items-center justify-center py-2 px-6 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-70"
           >
-            {isCompleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
-            {isCompleting ? 'Finishing...' : 'Finish'}
+            {isCompleting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <CheckCircle className="mr-2 h-4 w-4" />
+            )}
+            {isCompleting ? "Finishing..." : "Finish"}
           </button>
 
           <button
@@ -692,80 +752,108 @@ export default function Sign() {
       </header>
 
       {/* PDF VIEWER AND CANVAS */}
-      <main className="flex-1 overflow-auto bg-slate-200/50 flex flex-col relative py-8" onScroll={handleScroll}>
-
-         {/* --- FLOATING ACTION GUIDE --- */}
-          <div className="lg:absolute lg:left-6 lg:top-8 w-[90%] max-w-sm lg:w-56 mx-auto lg:mx-0 bg-white border border-slate-200 rounded-lg shadow-md lg:shadow-lg z-20 overflow-hidden animate-in fade-in slide-in-from-left-4 mb-6 lg:mb-0 shrink-0">
-            <div className="bg-slate-900 text-white px-4 py-3 text-sm font-semibold flex items-center justify-between">
-              Action Required
-              {pendingFields.length > 0 && (
-                <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-                  {pendingFields.length} left
-                </span>
-              )}
-            </div>
-            
-            <div className="max-h-[30vh] lg:max-h-[60vh] overflow-y-auto p-2 bg-slate-50 space-y-2">
-              {pendingFields.length === 0 ? (
-                <div className="text-sm text-green-600 font-medium flex items-center bg-green-50 p-3 rounded-md border border-green-200">
-                  <CheckCircle className="h-5 w-5 mr-2 text-green-500" /> All fields complete!
-                </div>
-              ) : (
-                Object.entries(fieldsByPage).map(([pageStr, fieldTypes]) => {
-                  const pageNum = parseInt(pageStr);
-                  return (
-                    <div 
-                      key={pageNum} 
-                      onClick={() => scrollToPage(pageNum)}
-                      className={`cursor-pointer p-1.5 border rounded-lg transition-all ${
-                        currentPage === pageNum 
-                          ? 'bg-blue-50 border-blue-300 shadow-sm' 
-                          : 'bg-white border-slate-200 hover:border-slate-400'
-                      }`}
-                    >
-                      <p className={`text-sm font-bold ${currentPage === pageNum ? 'text-blue-600' : 'text-slate-800'}`}>
-                        Page {pageNum}
-                      </p>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Needs: {fieldTypes.map((type, index) => (
-                          <span key={index}>
-                            <span className={type === 'Initial (All Pages)' ? 'font-semibold text-slate-800' : ''}>
-                              {type}
-                            </span>
-                            {index < fieldTypes.length - 1 ? ', ' : ''}
-                          </span>
-                        ))}
-                      </p>
-                    </div>
-                  )
-                })
-              )}
-            </div>
+      <main
+        className="flex-1 overflow-auto bg-slate-200/50 flex flex-col relative py-8"
+        onScroll={handleScroll}
+      >
+        {/* --- FLOATING ACTION GUIDE --- */}
+        <div className="lg:absolute lg:left-6 lg:top-8 w-[90%] max-w-sm lg:w-56 mx-auto lg:mx-0 bg-white border border-slate-200 rounded-lg shadow-md lg:shadow-lg z-20 overflow-hidden animate-in fade-in slide-in-from-left-4 mb-6 lg:mb-0 shrink-0">
+          <div className="bg-slate-900 text-white px-4 py-3 text-sm font-semibold flex items-center justify-between">
+            Action Required
+            {pendingFields.length > 0 && (
+              <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                {pendingFields.length} left
+              </span>
+            )}
           </div>
+
+          <div className="max-h-[30vh] lg:max-h-[60vh] overflow-y-auto p-2 bg-slate-50 space-y-2">
+            {pendingFields.length === 0 ? (
+              <div className="text-sm text-green-600 font-medium flex items-center bg-green-50 p-3 rounded-md border border-green-200">
+                <CheckCircle className="h-5 w-5 mr-2 text-green-500" /> All
+                fields complete!
+              </div>
+            ) : (
+              Object.entries(fieldsByPage).map(([pageStr, fieldTypes]) => {
+                const pageNum = parseInt(pageStr);
+                return (
+                  <div
+                    key={pageNum}
+                    onClick={() => scrollToPage(pageNum)}
+                    className={`cursor-pointer p-1.5 border rounded-lg transition-all ${
+                      currentPage === pageNum
+                        ? "bg-blue-50 border-blue-300 shadow-sm"
+                        : "bg-white border-slate-200 hover:border-slate-400"
+                    }`}
+                  >
+                    <p
+                      className={`text-sm font-bold ${currentPage === pageNum ? "text-blue-600" : "text-slate-800"}`}
+                    >
+                      Page {pageNum}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Needs:{" "}
+                      {fieldTypes.map((type, index) => (
+                        <span key={index}>
+                          <span
+                            className={
+                              type === "Initial (All Pages)"
+                                ? "font-semibold text-slate-800"
+                                : ""
+                            }
+                          >
+                            {type}
+                          </span>
+                          {index < fieldTypes.length - 1 ? ", " : ""}
+                        </span>
+                      ))}
+                    </p>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
 
         {/* Pagination Controls */}
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white px-4 py-2 rounded-full shadow-lg border border-slate-200 flex items-center space-x-4 z-20">
-          <button onClick={() => scrollToPage(Math.max(currentPage - 1, 1))} disabled={currentPage <= 1} className="text-slate-400 hover:text-slate-900 disabled:opacity-50"><ChevronLeft className="h-5 w-5" /></button>
-          <span className="text-sm font-medium text-slate-600">Page {currentPage} of {totalPages}</span>
-          <button onClick={() => scrollToPage(Math.min(currentPage + 1, totalPages))} disabled={currentPage >= totalPages} className="text-slate-400 hover:text-slate-900 disabled:opacity-50"><ChevronRight className="h-5 w-5" /></button>
+          <button
+            onClick={() => scrollToPage(Math.max(currentPage - 1, 1))}
+            disabled={currentPage <= 1}
+            className="text-slate-400 hover:text-slate-900 disabled:opacity-50"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <span className="text-sm font-medium text-slate-600">
+            Page {currentPage} of {totalPages}
+          </span>
+          <button
+            onClick={() => scrollToPage(Math.min(currentPage + 1, totalPages))}
+            disabled={currentPage >= totalPages}
+            className="text-slate-400 hover:text-slate-900 disabled:opacity-50"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
         </div>
-
-
 
         {/* The Actual Canvas Area */}
         <div className="mx-auto" style={{ width: 750 * scale }}>
-          <div 
+          <div
             ref={containerRef}
-            style={{ 
-              transform: `scale(${scale})`, 
-              transformOrigin: 'top left'
-            }} 
+            style={{
+              transform: `scale(${scale})`,
+              transformOrigin: "top left",
+            }}
             className="w-[750px] flex flex-col"
           >
             <Document
               file={documentFile} // URL from backend
               onLoadSuccess={onDocumentLoadSuccess}
-              loading={<div className="p-20 text-slate-400 w-[750px] text-center">Decrypting document...</div>}
+              loading={
+                <div className="p-20 text-slate-400 w-[750px] text-center">
+                  Decrypting document...
+                </div>
+              }
             >
               {Array.from(new Array(totalPages), (el, index) => {
                 const pageIndex = index + 1;
@@ -780,94 +868,175 @@ export default function Sign() {
                       width={750}
                       renderTextLayer={false}
                       renderAnnotationLayer={false}
-                      loading={<div className="w-[750px] h-[970px] bg-slate-50 animate-pulse flex items-center justify-center text-slate-400">Loading page {pageIndex}...</div>}
-                    />
-                    
-                    {fields.filter(f => f.page === pageIndex).map((field) => {
-                      const isCompleted = !!completedFields[field.id];
-                      const fontSize = field.fontSize || 14;
-
-                      return (
-                        <div
-                          key={field.id}
-                          style={{
-                            position: 'absolute',
-                            left: `${field.xPct}%`,
-                            top: `${field.yPct}%`,
-                            width: `${field.width || 120}px`,
-                            height: `${field.height || 40}px`,
-                          }}
-                          className={`cursor-pointer border-[1.5px] shadow-sm transition-colors flex items-center justify-center z-30 hover:shadow-md
-                            ${isCompleted
-                              ? 'bg-slate-50 border-slate-200 text-black hover:border-slate-300'
-                              : 'bg-amber-100/90 border-amber-400 text-amber-800 animate-pulse hover:animate-none hover:bg-amber-200/90'
-                            }`}
-                          onClick={() => { if (!isResizing.current) handleFieldClick(field); }}
-                        >
-                          {field.type === 'Date' ? (
-                            <input 
-                              type="date"
-                              min={new Date().toISOString().split('T')[0]} 
-                              value={completedFields[field.id] ? completedFields[field.id].split('::').slice(2).join('::') : ''}
-                              onChange={(e) => setCompletedFields(prev => ({ ...prev, [field.id]: `TYPED::${fontSize}::${e.target.value}` }))}
-                              onClick={(e) => { e.stopPropagation(); handleFieldClick(field); }}
-                              className="w-full h-full bg-transparent border-none outline-none text-center font-medium cursor-pointer"
-                              style={{ fontSize: `${fontSize}px` }}
-                            />
-                          ) : field.type === 'Text Box' || field.type === 'Name' ? (
-                            <textarea 
-                              placeholder={field.type}
-                              value={completedFields[field.id] ? completedFields[field.id].split('::').slice(2).join('::') : ''}
-                              onChange={(e) => {
-                                // Block typing if the content overflows the physical box height
-                                if (e.target.scrollHeight > e.target.clientHeight) return;
-                                setCompletedFields(prev => ({ ...prev, [field.id]: `TYPED::${fontSize}::${e.target.value}` }));
-                              }}
-                              onClick={(e) => { e.stopPropagation(); handleFieldClick(field); }}
-                              className="w-full h-full bg-transparent border-none outline-none text-left px-1 font-medium"
-                              style={{ 
-                                fontSize: `${fontSize}px`, 
-                                lineHeight: 1.2,
-                                resize: 'none', 
-                                overflow: 'hidden',
-                                paddingBottom: 0,
-                                // Fix vertical centering for single line vs multi line
-                                paddingTop: field.height > (fontSize * 2) ? '0px' : `${Math.max(0, (field.height - fontSize * 1.5) / 2)}px`
-                              }}
-                            />
-                          ) : isCompleted ? (
-                            <span 
-                              className={`font-medium overflow-hidden max-h-full w-full flex items-center justify-center ${field.type === 'Signature' || field.type === 'Initial' ? 'font-[cursive]' : ''}`}
-                              style={{ 
-                                fontSize: completedFields[field.id].startsWith('TYPED::') && completedFields[field.id].split('::').length >= 3 && !isNaN(completedFields[field.id].split('::')[1])
-                                  ? `${completedFields[field.id].split('::')[1]}px`
-                                  : field.type === 'Signature' || field.type === 'Initial' ? '24px' : '12px'
-                              }}
-                            >
-                              {completedFields[field.id].startsWith('data:image/') ? (
-                                <img src={completedFields[field.id]} alt="Signature" className="max-h-full max-w-full object-contain pointer-events-none" />
-                              ) : (
-                                completedFields[field.id].startsWith('TYPED::') && completedFields[field.id].split('::').length >= 3 && !isNaN(completedFields[field.id].split('::')[1])
-                                  ? completedFields[field.id].split('::').slice(2).join('::')
-                                  : completedFields[field.id].replace('TYPED::', '')
-                              )}
-                            </span>
-                          ) : (
-                            <span className="text-xs font-bold uppercase tracking-wider flex items-center pointer-events-none text-center">
-                              {field.type === 'Signature' ? (
-                                <><PenTool className="h-3 w-3 mr-1" /> Sign Here</>
-                              ) : field.type === 'Initial' ? (
-                                <><PenTool className="h-3 w-3 mr-1" /> Paraph Here</>
-                              ) : field.type === 'Stamp' ? (
-                                <>Stamp Here</>
-                              ) : (
-                                field.type
-                              )}
-                            </span>
-                          )}
+                      loading={
+                        <div className="w-[750px] h-[970px] bg-slate-50 animate-pulse flex items-center justify-center text-slate-400">
+                          Loading page {pageIndex}...
                         </div>
-                      );
-                    })}
+                      }
+                    />
+
+                    {fields
+                      .filter((f) => f.page === pageIndex)
+                      .map((field) => {
+                        const isCompleted = !!completedFields[field.id];
+                        const fontSize = field.fontSize || 14;
+
+                        return (
+                          <div
+                            key={field.id}
+                            style={{
+                              position: "absolute",
+                              left: `${field.xPct}%`,
+                              top: `${field.yPct}%`,
+                              width: `${field.width || 120}px`,
+                              height: `${field.height || 40}px`,
+                            }}
+                            className={`cursor-pointer border-[1.5px] shadow-sm transition-colors flex items-center justify-center z-30 hover:shadow-md
+                            ${
+                              isCompleted
+                                ? "bg-slate-50 border-slate-200 text-black hover:border-slate-300"
+                                : "bg-amber-100/90 border-amber-400 text-amber-800 animate-pulse hover:animate-none hover:bg-amber-200/90"
+                            }`}
+                            onClick={() => {
+                              if (!isResizing.current) handleFieldClick(field);
+                            }}
+                          >
+                            {field.type === "Date" ? (
+                              <input
+                                type="date"
+                                min={new Date().toISOString().split("T")[0]}
+                                value={
+                                  completedFields[field.id]
+                                    ? completedFields[field.id]
+                                        .split("::")
+                                        .slice(2)
+                                        .join("::")
+                                    : ""
+                                }
+                                onChange={(e) =>
+                                  setCompletedFields((prev) => ({
+                                    ...prev,
+                                    [field.id]: `TYPED::${fontSize}::${e.target.value}`,
+                                  }))
+                                }
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleFieldClick(field);
+                                }}
+                                className="w-full h-full bg-transparent border-none outline-none text-center font-medium cursor-pointer"
+                                style={{ fontSize: `${fontSize}px` }}
+                              />
+                            ) : field.type === "Text Box" ||
+                              field.type === "Name" ? (
+                              <textarea
+                                placeholder={field.type}
+                                value={
+                                  completedFields[field.id]
+                                    ? completedFields[field.id]
+                                        .split("::")
+                                        .slice(2)
+                                        .join("::")
+                                    : ""
+                                }
+                                onChange={(e) => {
+                                  // Block typing if the content overflows the physical box height
+                                  if (
+                                    e.target.scrollHeight >
+                                    e.target.clientHeight
+                                  )
+                                    return;
+                                  setCompletedFields((prev) => ({
+                                    ...prev,
+                                    [field.id]: `TYPED::${fontSize}::${e.target.value}`,
+                                  }));
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleFieldClick(field);
+                                }}
+                                className="w-full h-full bg-transparent border-none outline-none text-left px-1 font-medium"
+                                style={{
+                                  fontSize: `${fontSize}px`,
+                                  lineHeight: 1.2,
+                                  resize: "none",
+                                  overflow: "hidden",
+                                  paddingBottom: 0,
+                                  // Fix vertical centering for single line vs multi line
+                                  paddingTop:
+                                    field.height > fontSize * 2
+                                      ? "0px"
+                                      : `${Math.max(0, (field.height - fontSize * 1.5) / 2)}px`,
+                                }}
+                              />
+                            ) : isCompleted ? (
+                              <span
+                                className={`font-medium overflow-hidden max-h-full w-full flex items-center justify-center ${field.type === "Signature" || field.type === "Initial" ? "font-[cursive]" : ""}`}
+                                style={{
+                                  fontSize:
+                                    completedFields[field.id].startsWith(
+                                      "TYPED::",
+                                    ) &&
+                                    completedFields[field.id].split("::")
+                                      .length >= 3 &&
+                                    !isNaN(
+                                      completedFields[field.id].split("::")[1],
+                                    )
+                                      ? `${completedFields[field.id].split("::")[1]}px`
+                                      : field.type === "Signature" ||
+                                          field.type === "Initial"
+                                        ? "24px"
+                                        : "12px",
+                                }}
+                              >
+                                {completedFields[field.id].startsWith(
+                                  "data:image/",
+                                ) ? (
+                                  <img
+                                    src={completedFields[field.id]}
+                                    alt="Signature"
+                                    className="max-h-full max-w-full object-contain pointer-events-none"
+                                  />
+                                ) : completedFields[field.id].startsWith(
+                                    "TYPED::",
+                                  ) &&
+                                  completedFields[field.id].split("::")
+                                    .length >= 3 &&
+                                  !isNaN(
+                                    completedFields[field.id].split("::")[1],
+                                  ) ? (
+                                  completedFields[field.id]
+                                    .split("::")
+                                    .slice(2)
+                                    .join("::")
+                                ) : (
+                                  completedFields[field.id].replace(
+                                    "TYPED::",
+                                    "",
+                                  )
+                                )}
+                              </span>
+                            ) : (
+                              <span className="text-xs font-bold uppercase tracking-wider flex items-center pointer-events-none text-center">
+                                {field.type === "Signature" ? (
+                                  <>
+                                    <PenTool className="h-3 w-3 mr-1" /> Sign
+                                    Here
+                                  </>
+                                ) : field.type === "Initial" ? (
+                                  <>
+                                    <PenTool className="h-3 w-3 mr-1" /> Paraph
+                                    Here
+                                  </>
+                                ) : field.type === "Stamp" ? (
+                                  <>Stamp Here</>
+                                ) : (
+                                  field.type
+                                )}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
                   </div>
                 );
               })}
@@ -879,46 +1048,56 @@ export default function Sign() {
       {/* SIGNATURE MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
-          
-          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+          <div
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            onClick={() => setIsModalOpen(false)}
+          ></div>
 
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50 shrink-0">
-              <h3 className="text-lg font-semibold text-slate-900">Adopt Your Signature</h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="h-5 w-5" /></button>
+              <h3 className="text-lg font-semibold text-slate-900">
+                Adopt Your Signature
+              </h3>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
 
             <div className="p-6 overflow-y-auto">
               {/* Toggle Draw / Type / Upload */}
               <div className="flex space-x-4 mb-4 border-b border-slate-200 pb-2">
-                {fields.find(f => f.id === activeFieldId)?.type !== 'Stamp' && (
+                {fields.find((f) => f.id === activeFieldId)?.type !==
+                  "Stamp" && (
                   <>
                     <button
-                      onClick={() => setSignMode('draw')}
-                      className={`pb-2 text-sm font-medium transition-colors ${signMode === 'draw' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-900'}`}
+                      onClick={() => setSignMode("draw")}
+                      className={`pb-2 text-sm font-medium transition-colors ${signMode === "draw" ? "text-blue-600 border-b-2 border-blue-600" : "text-slate-500 hover:text-slate-900"}`}
                     >
                       Draw
                     </button>
                     <button
-                      onClick={() => setSignMode('type')}
-                      className={`pb-2 text-sm font-medium transition-colors ${signMode === 'type' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-900'}`}
+                      onClick={() => setSignMode("type")}
+                      className={`pb-2 text-sm font-medium transition-colors ${signMode === "type" ? "text-blue-600 border-b-2 border-blue-600" : "text-slate-500 hover:text-slate-900"}`}
                     >
                       Type
                     </button>
                   </>
                 )}
-                
+
                 <button
-                  onClick={() => setSignMode('upload')}
-                  className={`pb-2 text-sm font-medium transition-colors ${signMode === 'upload' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-900'}`}
+                  onClick={() => setSignMode("upload")}
+                  className={`pb-2 text-sm font-medium transition-colors ${signMode === "upload" ? "text-blue-600 border-b-2 border-blue-600" : "text-slate-500 hover:text-slate-900"}`}
                 >
                   Upload
                 </button>
 
                 {savedSignatures.length > 0 && (
                   <button
-                    onClick={() => setSignMode('saved')}
-                    className={`pb-2 text-sm font-medium transition-colors ${signMode === 'saved' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-900'}`}
+                    onClick={() => setSignMode("saved")}
+                    className={`pb-2 text-sm font-medium transition-colors ${signMode === "saved" ? "text-blue-600 border-b-2 border-blue-600" : "text-slate-500 hover:text-slate-900"}`}
                   >
                     Saved
                   </button>
@@ -926,15 +1105,18 @@ export default function Sign() {
               </div>
 
               {/* The Input Areas */}
-              {signMode === 'draw' && (
-                <div ref={padContainerRef} className="w-full h-40 border border-slate-300 rounded-lg bg-slate-50 relative">
+              {signMode === "draw" && (
+                <div
+                  ref={padContainerRef}
+                  className="w-full h-40 border border-slate-300 rounded-lg bg-slate-50 relative"
+                >
                   <SignatureCanvas
                     ref={sigPadRef}
                     penColor="black"
                     canvasProps={{
                       width: padSize.width,
                       height: padSize.height,
-                      className: 'rounded-lg cursor-crosshair'
+                      className: "rounded-lg cursor-crosshair",
                     }}
                   />
                   <button
@@ -946,7 +1128,7 @@ export default function Sign() {
                 </div>
               )}
 
-              {signMode === 'type' && (
+              {signMode === "type" && (
                 <div>
                   <input
                     type="text"
@@ -956,26 +1138,39 @@ export default function Sign() {
                     placeholder="Dknd Clovis"
                   />
                   <div className="bg-white border border-slate-200 rounded-lg flex items-center justify-center min-h-[120px] shadow-inner overflow-hidden">
-                    <span className="text-black" style={{ 
-                      fontFamily: (fields.find(f => f.id === activeFieldId)?.type === 'Signature' || fields.find(f => f.id === activeFieldId)?.type === 'Initial') ? "'Cedarville Cursive', cursive, serif" : "inherit",
-                      fontSize: `24px`
-                    }}>
-                      {signatureText || 'Preview'}
+                    <span
+                      className="text-black"
+                      style={{
+                        fontFamily:
+                          fields.find((f) => f.id === activeFieldId)?.type ===
+                            "Signature" ||
+                          fields.find((f) => f.id === activeFieldId)?.type ===
+                            "Initial"
+                            ? "'Cedarville Cursive', cursive, serif"
+                            : "inherit",
+                        fontSize: `24px`,
+                      }}
+                    >
+                      {signatureText || "Preview"}
                     </span>
                   </div>
                 </div>
               )}
 
-              {signMode === 'upload' && (
+              {signMode === "upload" && (
                 <div className="w-full border-2 border-dashed border-slate-300 rounded-lg bg-slate-50 flex flex-col items-center justify-center min-h-[160px] p-4 relative">
                   {!uploadedImage ? (
                     <>
                       <Upload className="h-8 w-8 text-slate-400 mb-2" />
-                      <p className="text-sm text-slate-600 font-medium">Upload a photo of your signature</p>
-                      <p className="text-xs text-slate-400 mb-4">Accepts .jpg and .png</p>
-                      <input 
-                        type="file" 
-                        accept="image/png, image/jpeg, image/jpg" 
+                      <p className="text-sm text-slate-600 font-medium">
+                        Upload a photo of your signature
+                      </p>
+                      <p className="text-xs text-slate-400 mb-4">
+                        Accepts .jpg and .png
+                      </p>
+                      <input
+                        type="file"
+                        accept="image/png, image/jpeg, image/jpg"
                         onChange={handleImageUpload}
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                       />
@@ -985,17 +1180,24 @@ export default function Sign() {
                     </>
                   ) : (
                     <div className="w-full flex flex-col items-center">
-                      <p className="text-xs text-slate-500 mb-2 w-full text-left font-medium">Drag the corners to crop your signature tightly:</p>
-                      <ReactCrop 
-                        crop={crop} 
-                        onChange={c => setCrop(c)} 
-                        onComplete={c => setCompletedCrop(c)}
+                      <p className="text-xs text-slate-500 mb-2 w-full text-left font-medium">
+                        Drag the corners to crop your signature tightly:
+                      </p>
+                      <ReactCrop
+                        crop={crop}
+                        onChange={(c) => setCrop(c)}
+                        onComplete={(c) => setCompletedCrop(c)}
                         className="max-h-[250px] rounded border border-slate-200"
                       >
-                        <img ref={imgRef} src={uploadedImage} alt="Crop preview" className="max-h-[250px] object-contain" />
+                        <img
+                          ref={imgRef}
+                          src={uploadedImage}
+                          alt="Crop preview"
+                          className="max-h-[250px] object-contain"
+                        />
                       </ReactCrop>
-                      <button 
-                        onClick={() => setUploadedImage(null)} 
+                      <button
+                        onClick={() => setUploadedImage(null)}
                         className="mt-3 text-xs text-red-500 hover:text-red-700 font-medium"
                       >
                         Remove Image
@@ -1016,17 +1218,22 @@ export default function Sign() {
                             if (isChecked) {
                               setIsCheckingSecurity(true);
                               try {
-                                const res = await api.get(`/api/signatures/security-status?email=${signerInfo.email}`);
+                                const res = await api.get(
+                                  `/api/signatures/security-status?email=${signerInfo.email}`,
+                                );
                                 setHasExistingPin(res.data.hasPin);
                               } catch (error) {}
                               setIsCheckingSecurity(false);
                             } else {
-                              setVaultPin('');
+                              setVaultPin("");
                             }
                           }}
                           className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-300 rounded cursor-pointer"
                         />
-                        <label htmlFor="saveSignature" className="ml-2 block text-sm text-blue-900 font-medium cursor-pointer">
+                        <label
+                          htmlFor="saveSignature"
+                          className="ml-2 block text-sm text-blue-900 font-medium cursor-pointer"
+                        >
                           Save this signature for future use.
                         </label>
                       </div>
@@ -1037,43 +1244,65 @@ export default function Sign() {
                           {isCheckingSecurity ? (
                             <div className="flex items-center justify-center text-blue-600 py-2">
                               <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mr-2"></div>
-                              <span className="text-xs font-medium">Checking security status...</span>
+                              <span className="text-xs font-medium">
+                                Checking security status...
+                              </span>
                             </div>
                           ) : isResettingPin ? (
                             <div className="text-left animate-in fade-in duration-200">
-                              <label className="block text-sm font-semibold text-amber-900 mb-1">Reset Vault PIN</label>
-                              <p className="text-xs text-amber-700 mb-3">Enter the 6-digit code sent to your email and a new 4-digit PIN.</p>
+                              <label className="block text-sm font-semibold text-amber-900 mb-1">
+                                Reset Vault PIN
+                              </label>
+                              <p className="text-xs text-amber-700 mb-3">
+                                Enter the 6-digit code sent to your email and a
+                                new 4-digit PIN.
+                              </p>
                               <div className="flex space-x-2 mb-3">
-                                <input 
-                                  type="text" maxLength="6"
+                                <input
+                                  type="text"
+                                  maxLength="6"
                                   value={resetOtp}
-                                  onChange={(e) => setResetOtp(e.target.value.replace(/\D/g, ''))}
+                                  onChange={(e) =>
+                                    setResetOtp(
+                                      e.target.value.replace(/\D/g, ""),
+                                    )
+                                  }
                                   className="w-1/2 px-3 py-2 border border-amber-300 rounded focus:ring-2 focus:ring-amber-500 text-center tracking-widest bg-white text-sm"
                                   placeholder="6-Digit OTP"
                                 />
-                                <input 
-                                  type="password" maxLength="4"
+                                <input
+                                  type="password"
+                                  maxLength="4"
                                   value={newPin}
-                                  onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+                                  onChange={(e) =>
+                                    setNewPin(e.target.value.replace(/\D/g, ""))
+                                  }
                                   className="w-1/2 px-3 py-2 border border-amber-300 rounded focus:ring-2 focus:ring-amber-500 text-center tracking-widest bg-white text-sm"
                                   placeholder="New 4-Digit PIN"
                                 />
                               </div>
                               <div className="flex space-x-2">
-                                <button 
-                                  type="button" 
+                                <button
+                                  type="button"
                                   onClick={() => setIsResettingPin(false)}
                                   className="flex-1 py-1.5 bg-white border border-amber-300 text-amber-800 rounded text-xs font-medium hover:bg-amber-50 transition-colors shadow-sm"
-                                >Cancel</button>
-                                <button 
-                                  type="button" 
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => handleConfirmPinReset()}
                                   disabled={isConfirmingReset}
                                   className="flex-1 py-1.5 bg-amber-600 text-white rounded text-xs font-medium hover:bg-amber-700 transition-colors shadow-sm disabled:opacity-75 disabled:cursor-not-allowed flex items-center justify-center"
                                 >
                                   {isConfirmingReset ? (
-                                    <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1.5"></div> Resetting...</>
-                                  ) : 'Confirm Reset'}
+                                    <>
+                                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1.5"></div>{" "}
+                                      Resetting...
+                                    </>
+                                  ) : (
+                                    "Confirm Reset"
+                                  )}
                                 </button>
                               </div>
                             </div>
@@ -1081,26 +1310,36 @@ export default function Sign() {
                             <>
                               <label className="flex items-center text-sm font-semibold text-slate-800 mb-1">
                                 <Lock className="h-3.5 w-3.5 mr-1.5 text-blue-600" />
-                                {hasExistingPin ? 'Enter Vault PIN to Save' : 'Create Vault PIN'}
+                                {hasExistingPin
+                                  ? "Enter Vault PIN to Save"
+                                  : "Create Vault PIN"}
                               </label>
                               <p className="text-xs text-slate-500 mb-3">
-                                {hasExistingPin 
-                                  ? 'Enter your existing 4-digit Signature Vault PIN to append this image.' 
-                                  : 'Create a 4-digit PIN to secure your signatures for future use.'}
+                                {hasExistingPin
+                                  ? "Enter your existing 4-digit Signature Vault PIN to append this image."
+                                  : "Create a 4-digit PIN to secure your signatures for future use."}
                               </p>
                               <div className="flex items-center space-x-4">
-                                <PinInputBox pin={vaultPin} setPin={setVaultPin} />
-                                
+                                <PinInputBox
+                                  pin={vaultPin}
+                                  setPin={setVaultPin}
+                                />
+
                                 {hasExistingPin && (
-                                  <button 
-                                    type="button" 
-                                    onClick={() => handleForgotPin()} 
+                                  <button
+                                    type="button"
+                                    onClick={() => handleForgotPin()}
                                     disabled={isRequestingReset}
                                     className="text-xs font-medium text-blue-600 hover:text-blue-800 underline disabled:opacity-50 flex items-center"
                                   >
                                     {isRequestingReset ? (
-                                      <><div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mr-1"></div> Sending...</>
-                                    ) : 'Forgot PIN?'}
+                                      <>
+                                        <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mr-1"></div>{" "}
+                                        Sending...
+                                      </>
+                                    ) : (
+                                      "Forgot PIN?"
+                                    )}
                                   </button>
                                 )}
                               </div>
@@ -1113,32 +1352,43 @@ export default function Sign() {
                 </div>
               )}
 
-              {signMode === 'saved' && (
+              {signMode === "saved" && (
                 <div className="w-full border border-slate-300 rounded-lg bg-slate-50 p-4 min-h-[160px]">
                   {savedSignatures[0]?.isProtected && !isVaultUnlocked ? (
                     <div className="text-center py-4 animate-in fade-in duration-200">
                       {!isResettingPin ? (
                         <>
                           <Lock className="h-8 w-8 text-slate-400 mx-auto mb-3" />
-                          <h4 className="font-semibold text-slate-800 mb-2">Vault Locked</h4>
-                          <p className="text-xs text-slate-500 mb-4">Enter your 4-digit PIN to access your saved signatures.</p>
+                          <h4 className="font-semibold text-slate-800 mb-2">
+                            Vault Locked
+                          </h4>
+                          <p className="text-xs text-slate-500 mb-4">
+                            Enter your 4-digit PIN to access your saved
+                            signatures.
+                          </p>
                           <div className="flex justify-center mb-5">
                             <PinInputBox pin={vaultPin} setPin={setVaultPin} />
                           </div>
-                          <button 
+                          <button
                             disabled={isUnlocking}
                             onClick={async () => {
-                               if (vaultPin.length !== 4) return toast.error('PIN must be exactly 4 digits.');
-                               setIsUnlocking(true);
-                               try {
-                                 await api.post('/api/signatures/verify-vault', { email: signerInfo.email, pin: vaultPin });
-                                 setIsVaultUnlocked(true);
-                                 toast.success('Vault unlocked.');
-                               } catch (err) { 
-                                 toast.error('Incorrect PIN'); 
-                               } finally {
-                                 setIsUnlocking(false);
-                               }
+                              if (vaultPin.length !== 4)
+                                return toast.error(
+                                  "PIN must be exactly 4 digits.",
+                                );
+                              setIsUnlocking(true);
+                              try {
+                                await api.post("/api/signatures/verify-vault", {
+                                  email: signerInfo.email,
+                                  pin: vaultPin,
+                                });
+                                setIsVaultUnlocked(true);
+                                toast.success("Vault unlocked.");
+                              } catch (err) {
+                                toast.error("Incorrect PIN");
+                              } finally {
+                                setIsUnlocking(false);
+                              }
                             }}
                             className="px-6 py-2 bg-slate-800 text-white rounded text-sm font-medium hover:bg-slate-900 shadow-sm flex items-center justify-center mx-auto disabled:opacity-75 disabled:cursor-not-allowed transition-all w-32"
                           >
@@ -1147,54 +1397,79 @@ export default function Sign() {
                                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
                                 Verifying
                               </>
-                            ) : 'Unlock'}
+                            ) : (
+                              "Unlock"
+                            )}
                           </button>
-                          <button 
+                          <button
                             type="button"
-                            onClick={() => handleForgotPin()} 
+                            onClick={() => handleForgotPin()}
                             disabled={isRequestingReset}
                             className="block mx-auto mt-4 text-xs text-slate-500 hover:text-slate-700 underline disabled:opacity-50 flex items-center justify-center"
                           >
                             {isRequestingReset ? (
-                              <><div className="w-3 h-3 border-2 border-slate-500 border-t-transparent rounded-full animate-spin mr-1"></div> Sending...</>
-                            ) : 'Forgot PIN?'}
+                              <>
+                                <div className="w-3 h-3 border-2 border-slate-500 border-t-transparent rounded-full animate-spin mr-1"></div>{" "}
+                                Sending...
+                              </>
+                            ) : (
+                              "Forgot PIN?"
+                            )}
                           </button>
                         </>
                       ) : (
                         <div className="bg-white p-4 rounded border border-amber-200 shadow-sm text-left">
-                          <label className="block text-sm font-semibold text-amber-900 mb-1">Reset Vault PIN</label>
-                          <p className="text-xs text-amber-700 mb-3">Enter the 6-digit code sent to your email and a new 4-digit PIN.</p>
+                          <label className="block text-sm font-semibold text-amber-900 mb-1">
+                            Reset Vault PIN
+                          </label>
+                          <p className="text-xs text-amber-700 mb-3">
+                            Enter the 6-digit code sent to your email and a new
+                            4-digit PIN.
+                          </p>
                           <div className="flex space-x-2 mb-3">
-                            <input 
-                              type="text" maxLength="6"
+                            <input
+                              type="text"
+                              maxLength="6"
                               value={resetOtp}
-                              onChange={(e) => setResetOtp(e.target.value.replace(/\D/g, ''))}
+                              onChange={(e) =>
+                                setResetOtp(e.target.value.replace(/\D/g, ""))
+                              }
                               className="w-1/2 px-3 py-2 border border-amber-300 rounded focus:ring-2 focus:ring-amber-500 text-center tracking-widest bg-white text-sm"
                               placeholder="6-Digit OTP"
                             />
-                            <input 
-                              type="password" maxLength="4"
+                            <input
+                              type="password"
+                              maxLength="4"
                               value={newPin}
-                              onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+                              onChange={(e) =>
+                                setNewPin(e.target.value.replace(/\D/g, ""))
+                              }
                               className="w-1/2 px-3 py-2 border border-amber-300 rounded focus:ring-2 focus:ring-amber-500 text-center tracking-widest bg-white text-sm"
                               placeholder="New 4-Digit PIN"
                             />
                           </div>
                           <div className="flex space-x-2">
-                            <button 
-                              type="button" 
+                            <button
+                              type="button"
                               onClick={() => setIsResettingPin(false)}
                               className="flex-1 py-1.5 bg-white border border-amber-300 text-amber-800 rounded text-xs font-medium hover:bg-amber-50 transition-colors shadow-sm"
-                            >Cancel</button>
-                            <button 
-                              type="button" 
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => handleConfirmPinReset()}
                               disabled={isConfirmingReset}
                               className="flex-1 py-1.5 bg-amber-600 text-white rounded text-xs font-medium hover:bg-amber-700 transition-colors shadow-sm disabled:opacity-75 disabled:cursor-not-allowed flex items-center justify-center"
                             >
                               {isConfirmingReset ? (
-                                <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1.5"></div> Resetting...</>
-                              ) : 'Confirm Reset'}
+                                <>
+                                  <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1.5"></div>{" "}
+                                  Resetting...
+                                </>
+                              ) : (
+                                "Confirm Reset"
+                              )}
                             </button>
                           </div>
                         </div>
@@ -1202,10 +1477,12 @@ export default function Sign() {
                     </div>
                   ) : (
                     <>
-                      <p className="text-sm font-medium text-slate-700 mb-3">Select a saved signature:</p>
+                      <p className="text-sm font-medium text-slate-700 mb-3">
+                        Select a saved signature:
+                      </p>
                       <div className="grid grid-cols-2 gap-4">
                         {savedSignatures.map((sig, index) => (
-                          <div 
+                          <div
                             key={index}
                             onClick={() => {
                               if (confirmDeleteId !== sig.id) {
@@ -1213,42 +1490,71 @@ export default function Sign() {
                               }
                             }}
                             className={`cursor-pointer border-2 rounded-lg flex flex-col overflow-hidden bg-white transition-all ${
-                              selectedSavedSignature?.id === sig.id ? 'border-blue-600 ring-2 ring-blue-100' : 'border-slate-200 hover:border-slate-300'
+                              selectedSavedSignature?.id === sig.id
+                                ? "border-blue-600 ring-2 ring-blue-100"
+                                : "border-slate-200 hover:border-slate-300"
                             }`}
                           >
                             {confirmDeleteId === sig.id ? (
                               <div className="flex flex-col h-full bg-red-50 justify-center items-center p-3 text-center animate-in fade-in duration-200">
-                                <p className="text-sm font-bold text-red-800 mb-1">Delete signature?</p>
-                                <p className="text-[10px] text-red-600 mb-3 leading-tight">This will permanently remove it from your account.</p>
+                                <p className="text-sm font-bold text-red-800 mb-1">
+                                  Delete signature?
+                                </p>
+                                <p className="text-[10px] text-red-600 mb-3 leading-tight">
+                                  This will permanently remove it from your
+                                  account.
+                                </p>
                                 <div className="flex space-x-2 w-full mt-auto">
-                                  <button 
+                                  <button
                                     type="button"
-                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmDeleteId(null); }}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setConfirmDeleteId(null);
+                                    }}
                                     className="flex-1 py-1.5 bg-white border border-slate-200 text-slate-600 rounded text-xs font-medium hover:bg-slate-50 transition-colors shadow-sm"
-                                  >Cancel</button>
-                                  <button 
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
                                     type="button"
-                                    onClick={(e) => handleDeleteSignature(e, sig.id)}
+                                    onClick={(e) =>
+                                      handleDeleteSignature(e, sig.id)
+                                    }
                                     disabled={deletingId === sig.id}
                                     className="flex-1 py-1.5 bg-red-600 text-white rounded text-xs font-medium hover:bg-red-700 transition-colors shadow-sm disabled:opacity-50"
-                                  >{deletingId === sig.id ? 'Removing...' : 'Confirm'}</button>
+                                  >
+                                    {deletingId === sig.id
+                                      ? "Removing..."
+                                      : "Confirm"}
+                                  </button>
                                 </div>
                               </div>
                             ) : (
                               <>
                                 <div className="relative h-24 p-2 flex items-center justify-center bg-slate-50 border-b border-slate-100">
-                                  <img 
+                                  <img
                                     crossOrigin="anonymous"
-                                    src={sig.displayUrl} 
-                                    alt="Saved Signature" 
-                                    className="max-h-full max-w-full object-contain pointer-events-none" 
+                                    src={sig.displayUrl}
+                                    alt="Saved Signature"
+                                    className="max-h-full max-w-full object-contain pointer-events-none"
                                   />
                                 </div>
-                                <button 
+                                <button
                                   type="button"
-                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmDeleteId(sig.id); }}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setConfirmDeleteId(sig.id);
+                                  }}
                                   className="w-full py-2 flex items-center justify-center text-xs font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors"
-                                >Remove <X className="h-3.5 w-3.5 ml-1" strokeWidth={2.5} /></button>
+                                >
+                                  Remove{" "}
+                                  <X
+                                    className="h-3.5 w-3.5 ml-1"
+                                    strokeWidth={2.5}
+                                  />
+                                </button>
                               </>
                             )}
                           </div>
@@ -1259,15 +1565,20 @@ export default function Sign() {
                 </div>
               )}
 
-              <p className="text-xs text-slate-500 text-center mt-4 mb-4">By adopting this signature, you agree that it is a legally binding electronic representation of your signature.</p>
+              <p className="text-xs text-slate-500 text-center mt-4 mb-4">
+                By adopting this signature, you agree that it is a legally
+                binding electronic representation of your signature.
+              </p>
 
               <button
                 onClick={handleAdoptSignature}
                 disabled={isAdopting}
                 className="w-full py-3 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm flex items-center justify-center disabled:opacity-70"
               >
-                {isAdopting && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
-                {isAdopting ? 'Processing...' : 'Adopt and Sign'}
+                {isAdopting && (
+                  <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                )}
+                {isAdopting ? "Processing..." : "Adopt and Sign"}
               </button>
             </div>
           </div>
@@ -1277,22 +1588,41 @@ export default function Sign() {
       {/* DECLINE MODAL */}
       {isDeclineModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsDeclineModalOpen(false)}></div>
+          <div
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            onClick={() => setIsDeclineModalOpen(false)}
+          ></div>
           <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
-
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50">
-              <h3 className="text-lg font-semibold text-slate-900">Decline to Sign</h3>
-              <button disabled={isDeclining} onClick={() => !isDeclining && setIsDeclineModalOpen(false)} className="text-slate-400 hover:text-slate-600 disabled:opacity-50"><X className="h-5 w-5" /></button>
+              <h3 className="text-lg font-semibold text-slate-900">
+                Decline to Sign
+              </h3>
+              <button
+                disabled={isDeclining}
+                onClick={() => !isDeclining && setIsDeclineModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 disabled:opacity-50"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
 
             <div className="p-6">
               <p className="text-sm text-slate-600 mb-4">
-                This will halt the entire signing workflow and notify the initiator. Please select a reason for declining:
+                This will halt the entire signing workflow and notify the
+                initiator. Please select a reason for declining:
               </p>
-              
+
               <div className="space-y-3 mb-4">
-                {['Information is incorrect', 'I am not authorized to sign this', 'Terms are unacceptable', 'Other'].map(reason => (
-                  <label key={reason} className="flex items-start cursor-pointer">
+                {[
+                  "Information is incorrect",
+                  "I am not authorized to sign this",
+                  "Terms are unacceptable",
+                  "Other",
+                ].map((reason) => (
+                  <label
+                    key={reason}
+                    className="flex items-start cursor-pointer"
+                  >
                     <input
                       type="radio"
                       name="declineReason"
@@ -1301,12 +1631,14 @@ export default function Sign() {
                       onChange={(e) => setDeclineReasonRadio(e.target.value)}
                       className="mt-0.5 h-4 w-4 text-red-600 focus:ring-red-500 border-slate-300"
                     />
-                    <span className="ml-2.5 text-sm text-slate-700 font-medium">{reason}</span>
+                    <span className="ml-2.5 text-sm text-slate-700 font-medium">
+                      {reason}
+                    </span>
                   </label>
                 ))}
               </div>
 
-              {declineReasonRadio === 'Other' && (
+              {declineReasonRadio === "Other" && (
                 <div className="animate-in fade-in duration-200">
                   <textarea
                     value={declineReasonText}
@@ -1316,17 +1648,26 @@ export default function Sign() {
                     className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 resize-none text-sm"
                     placeholder="Please provide details..."
                   />
-                  <p className="text-xs text-slate-400 text-right mt-1">{declineReasonText.length}/500</p>
+                  <p className="text-xs text-slate-400 text-right mt-1">
+                    {declineReasonText.length}/500
+                  </p>
                 </div>
               )}
 
               <button
                 onClick={handleConfirmDecline}
-                disabled={!declineReasonRadio || (declineReasonRadio === 'Other' && !declineReasonText.trim()) || isDeclining}
+                disabled={
+                  !declineReasonRadio ||
+                  (declineReasonRadio === "Other" &&
+                    !declineReasonText.trim()) ||
+                  isDeclining
+                }
                 className="w-full mt-4 py-3 px-4 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
               >
-                {isDeclining && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
-                {isDeclining ? 'Declining...' : 'Confirm Decline'}
+                {isDeclining && (
+                  <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                )}
+                {isDeclining ? "Declining..." : "Confirm Decline"}
               </button>
             </div>
           </div>

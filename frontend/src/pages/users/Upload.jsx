@@ -962,10 +962,10 @@ export default function Upload() {
                   <div className="flex justify-end">
                     <button
                       onClick={handleUploadSubmit}
-                      disabled={isLoading || (!file && !existingFile)}
+                      disabled={isUploading || (!file && !existingFile)}
                       className="flex items-center h-[46px] px-8 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-all shadow-sm hover:shadow disabled:opacity-50 w-full sm:w-auto justify-center group"
                     >
-                      {isLoading ? (
+                      {isUploading ? (
                         <>
                           <Loader2 className="animate-spin h-4 w-4 mr-2" /> Uploading securely...
                         </>

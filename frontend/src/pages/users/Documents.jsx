@@ -2,12 +2,11 @@ import MoveModal from '../../components/folders/MoveModal';
 import ShareModal from '../../components/folders/ShareModal';
 import ContextMenu from '../../components/folders/ContextMenu';
 import { useAsyncLock } from '../../hooks/useAsyncLock';
-import { DndContext, useDraggable, useDroppable, pointerWithin, MouseSensor, TouchSensor, useSensor, useSensors, DragOverlay, KeyboardSensor } from '@dnd-kit/core';
+import { DndContext, useDraggable, useDroppable,  MouseSensor, TouchSensor, useSensor, useSensors, KeyboardSensor } from '@dnd-kit/core';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
-import { formatDistanceToNow, isAfter } from 'date-fns';
 import Select from '../../components/ui/Select';
 import { FileSignature, RotateCcw, Layers, Ban, Clock, CheckCircle2, AlertTriangle, UploadCloud, X, Plus, Search, Eye, Bell, Download, Pencil, History, MoreVertical, Info, Loader2, LayoutGrid, List, Folder, Trash2, HomeIcon, LayoutTemplate, ArrowRight } from 'lucide-react';
 
@@ -502,7 +501,21 @@ function DocumentTableRow({ document, currentUser, isChecked, onCheck, onOpen, o
         <PendingOnCell document={document} currentUser={currentUser} />
       </td>
       <td className="px-3 py-2">
-        <StatusPill status={document.status} />
+        <div className="flex flex-col gap-1 items-start">
+          <div className="flex items-center gap-1">
+            <StatusPill status={document.status} />
+            {document.dueDate && new Date(document.dueDate) < new Date() && document.status === 'pending' && (
+              <span className="text-[8px] font-bold text-red-600 bg-red-100 px-1 py-0.5 rounded-sm uppercase tracking-wider">
+                Overdue
+              </span>
+            )}
+          </div>
+          {document.dueDate && (
+            <span className="text-[10px] text-slate-500 whitespace-nowrap">
+              Due: {new Date(document.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+        </div>
       </td>
       <td className="px-3 py-2">
         <RowActions document={document} currentUser={currentUser} onView={onOpen} onVoided={onVoided} onContextMenuAction={onContextMenuAction} />
@@ -803,7 +816,7 @@ function ReviewPanel({ document, onRefresh }) {
 
 function DeclineResolutionPanel({ document, onRefresh }) {
   const navigate = useNavigate();
-  const [isResuming, setIsResuming] = useState(false);
+  const [isResuming] = useState(false);
   const [isReviseModalOpen, setIsReviseModalOpen] = useState(false);
   const [voidModalOpen, setVoidModalOpen] = useState(false);
 
@@ -942,7 +955,7 @@ const TABS = [
 
 const STATUS_FILTER_OPTIONS = ['all', ...Object.keys(STATUS_META)];
 
-function TemplateTableRow({ template, isChecked, onCheck, onUse, setContextMenu, isUsing }) {
+function TemplateTableRow({ template, isChecked, onCheck, setContextMenu, isUsing }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `template-${template.id}`,
     data: { type: 'template', item: template }
@@ -1005,7 +1018,7 @@ function TemplateTableRow({ template, isChecked, onCheck, onUse, setContextMenu,
 }
 
 
-function FolderTableRow({ folder, isChecked, onCheck, onOpen, setContextMenu }) {
+function FolderTableRow({ folder, onOpen, setContextMenu }) {
   const { attributes, listeners, setNodeRef: setDraggableRef, isDragging } = useDraggable({
     id: `folder-${folder.id}`,
     data: { type: 'folder', item: folder }
@@ -1218,8 +1231,8 @@ export default function Documents() {
   const [selectedItemsForMove, setSelectedItemsForMove] = useState([]);
   const [contextMenu, setContextMenu] = useState(null);
 
-  const [activeDragItem, setActiveDragItem] = useState(null);
-  const [isDraggingSelection, setIsDraggingSelection] = useState(false);
+  const [setActiveDragItem] = useState(null);
+  const [setIsDraggingSelection] = useState(false);
 
   
   
@@ -1435,7 +1448,7 @@ export default function Documents() {
     if (selectedId) fetchDetail(selectedId);
   };
 
-  const [handleUseTemplate, isUsingTemplate] = useAsyncLock(async (template) => {
+  const [handleUseTemplate] = useAsyncLock(async (template) => {
     setUsingTemplateId(template.id);
     try {
       const res = await api.post(`/api/templates/${template.id}/use`);
@@ -1758,8 +1771,8 @@ export default function Documents() {
                   <col style={{ width: '13%' }} />
                   <col style={{ width: '12%' }} />
                   <col style={{ width: '9%' }} />
-                  <col style={{ width: '15%' }} />
                   <col style={{ width: '13%' }} />
+                  <col style={{ width: '16%' }} />
                   <col style={{ width: '5%' }} />
                 </colgroup>
                 <thead>

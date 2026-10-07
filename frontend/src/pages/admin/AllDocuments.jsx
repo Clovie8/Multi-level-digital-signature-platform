@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAsyncLock } from '../../hooks/useAsyncLock';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
@@ -360,8 +360,8 @@ export default function AllDocuments() {
         </div>
 
         {/* Search & Tabs */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6 border-b border-slate-200 pb-4">
-          <div className="flex space-x-2">
+        <div className="flex flex-col gap-4 mb-6">
+          <div className="flex space-x-2 border-b border-slate-200 pb-2 w-full">
             <button
               onClick={() => setActiveTab('documents')}
               className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -388,7 +388,7 @@ export default function AllDocuments() {
             </button>
           </div>
           
-          <div className="flex items-center gap-3 w-full sm:w-auto mt-4 sm:mt-0 flex-wrap">
+          <div className="flex items-center gap-3 w-full flex-wrap">
             {activeTab === 'documents' && (
               <Select
                 value={statusFilter}
@@ -485,7 +485,21 @@ export default function AllDocuments() {
                         </div>
                       </td>
                       <td className="px-5 py-4">
-                        <StatusPill status={doc.status} />
+                        <div className="flex flex-col gap-1 items-start">
+                          <div className="flex items-center gap-1">
+                            <StatusPill status={doc.status} />
+                            {doc.dueDate && new Date(doc.dueDate) < new Date() && doc.status === 'pending' && (
+                              <span className="text-[8px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded-sm uppercase tracking-wider">
+                                Overdue
+                              </span>
+                            )}
+                          </div>
+                          {doc.dueDate && (
+                            <span className="text-[10px] text-slate-500 whitespace-nowrap">
+                              Due: {new Date(doc.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-5 py-4">
                         <p className="text-sm font-medium text-slate-900">{doc.initiatorName}</p>
@@ -658,7 +672,6 @@ export default function AllDocuments() {
                   {detail.steps.map((step, index) => {
                     const isSigned = step.status === 'completed';
                     const isDeclined = step.status === 'declined';
-                    const isPending = step.status === 'pending';
                     
                     const reachedAt = step.reachedAt || (index === 0 ? detail.createdAt : detail.steps[index - 1]?.signedAt);
                     
