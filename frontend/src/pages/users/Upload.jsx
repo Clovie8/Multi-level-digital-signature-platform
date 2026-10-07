@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useAsyncLock } from '../../hooks/useAsyncLock';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
@@ -458,7 +459,7 @@ export default function Upload() {
     setFile(selectedFile);
   };
 
-  const handleUploadSubmit = async () => {
+  const [handleUploadSubmit, isUploading] = useAsyncLock(async () => {
     // Editing a draft and keeping its existing file — nothing to upload, just move on.
     if (!file && existingFile) {
       setCurrentStep(2);
@@ -467,7 +468,6 @@ export default function Upload() {
 
     if (!file) return toast.error('Please select a file first.');
 
-    setIsLoading(true);
     const formData = new FormData();
     formData.append('pdf_file', file);
     if (selectedFolderId) {
@@ -492,16 +492,13 @@ export default function Upload() {
     } catch (error) {
       toast.error(error.response?.data?.error || 'Upload failed. Check your connection.');
       console.error(error);
-    } finally {
-      setIsLoading(false);
     }
-  };
+  });
   
 
-   const handleUseTemplateSubmit = async () => {
+   const [handleUseTemplateSubmit, isUsingTemplate] = useAsyncLock(async () => {
     if (!selectedTemplateId) return toast.error('Please select a template first.');
 
-    setIsLoading(true);
     try {
       const res = await api.post(`/api/templates/${selectedTemplateId}/use`, { folder_id: selectedFolderId });
       const { document: newDoc, signers: templateSigners, fields: templateFields } = res.data;
@@ -518,10 +515,8 @@ export default function Upload() {
     } catch (error) {
       toast.error(error.response?.data?.error || 'Could not start a document from this template.');
       console.error(error);
-    } finally {
-      setIsLoading(false);
     }
-  };
+  });
 
 
   // 2: HIERARCHY HANDLERS
@@ -605,11 +600,9 @@ export default function Upload() {
     return true;
   };
 
-  const handleSaveAsDraft = async () => {
-    if (isSavingDraft || isLoading) return;
+  const [handleSaveAsDraft, isSavingDraftState] = useAsyncLock(async () => {
     if (!validateSigners()) return;
 
-     setIsSavingDraft(true);
     try {
       const finalSigners = signers.map((s, idx) => {
         if (isInitiatorFirst && idx === 0) {
@@ -624,15 +617,11 @@ export default function Upload() {
       navigate('/documents');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not save this draft.');
-    } finally {
-      setIsSavingDraft(false);
     }
-  };
+  });
 
   // DISPATCH HANDLER
-  const handleDispatchDocument = async () => {
-    if (isLoading) return;
-
+  const [handleDispatchDocument, isDispatching] = useAsyncLock(async () => {
     // Validation: Check if every signer has at least one field assigned
     const signersWithoutFields = signers.filter(s => !fields.some(f => f.signerId === s.id));
     if (signersWithoutFields.length > 0) {
@@ -642,8 +631,6 @@ export default function Upload() {
     // No template name validation needed as it automatically takes the document name
 
     if (!validateSigners()) return;
-
-    setIsLoading(true);
 
     try {
       const token = localStorage.getItem('token');
@@ -699,10 +686,8 @@ export default function Upload() {
     } catch (error) {
       console.error(error);
       toast.error('Failed to dispatch document. Please try again.');
-    } finally {
-      setIsLoading(false);
     }
-  };
+  });
 
   // --- CANVAS DRAG & DROP HANDLERS ---
   const handleDragStart = (e, fieldType) => {
@@ -1318,17 +1303,17 @@ export default function Upload() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <button onClick={handleSaveAsDraft} disabled={isSavingDraft || isLoading} className="flex items-center justify-center px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 transition-colors disabled:opacity-50">
-                    {isSavingDraft && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
-                    {isSavingDraft ? 'Saving...' : 'Save as draft'}
+                  <button onClick={handleSaveAsDraft} disabled={isSavingDraftState} className="flex items-center justify-center px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 transition-colors disabled:opacity-50">
+                    {isSavingDraftState && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
+                    {isSavingDraftState ? 'Saving...' : 'Save as draft'}
                   </button>
                   <button
                     onClick={handleDispatchDocument}
-                    disabled={isLoading}
+                    disabled={isDispatching}
                     className="flex items-center justify-center py-2 px-4 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-sm"
                   >
-                    {isLoading && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
-                    {isLoading ? 'Processing...' : 'Send Document'} {!isLoading && <Send className="ml-2 h-4 w-4" />}
+                    {isDispatching && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
+                    {isDispatching ? 'Processing...' : 'Send Document'} {!isDispatching && <Send className="ml-2 h-4 w-4" />}
                   </button>
                 </div>
               </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useAsyncLock } from '../../hooks/useAsyncLock';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
@@ -542,7 +543,7 @@ export default function Sign() {
       return toast.error('Please complete all assigned fields before finishing.');
     }
 
-    setIsCompleting(true);
+    // setIsLoading(true);
     try {
       const res = await api.post(`/api/documents/sign/${token}/complete`, {
         completedFields,
@@ -562,7 +563,7 @@ export default function Sign() {
     } catch (error) {
       console.error('Failed to submit:', error);
       toast.error('Failed to save signature. Please try again.');
-      setIsCompleting(false);
+      // setIsLoading(false);
     }
   };
 

@@ -94,11 +94,11 @@ function DeactivateModal({ isOpen, userName, onConfirm, onCancel, isProcessing }
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4" onClick={() => !isProcessing && onCancel()}>
       <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="p-6">
-          <h3 className="text-lg font-semibold text-slate-900 mb-2">Deactivate User</h3>
-          <p className="text-sm text-slate-500 leading-relaxed mb-4">
+          <h3 className="text-lg font-semibold text-slate-900 mb-2 text-left">Deactivate User</h3>
+          <p className="text-sm text-slate-500 mb-4 text-left">
             {userName} won't be able to sign in until reactivated. They'll be notified by email.
           </p>
-          <label className="block text-xs font-semibold text-slate-500 mb-1.5">Reason (optional)</label>
+          <label className="block text-xs font-semibold text-slate-500 mb-1.5 text-left">Reason (optional)</label>
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
@@ -111,7 +111,7 @@ function DeactivateModal({ isOpen, userName, onConfirm, onCancel, isProcessing }
           <button
             onClick={onCancel}
             disabled={isProcessing}
-            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-md transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-200 hover:text-slate-900 hover:bg-slate-300 rounded-md transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
