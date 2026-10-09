@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, useNavigate, useLocation, useOutletContext, Link } from 'react-router-dom';
-import { PenTool, Menu, X, Home, FileSignature, Settings, LogOut, User, ChevronDown, ChevronLeft, ChevronRight, UploadCloud, ShieldCheck, ScrollText, FolderOpen, Clock } from 'lucide-react';
+import { Menu, X, Home, Settings, LogOut, User, ChevronDown, ChevronLeft, ChevronRight, UploadCloud, ShieldCheck, ScrollText, FolderOpen, Clock, Layers } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
 
@@ -18,6 +18,7 @@ export default function Layout() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSidebarPinned, setIsSidebarPinned] = useState(false);
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
+  const [dynamicTitle, setDynamicTitle] = useState('');
   
   const isSidebarExpanded = isSidebarPinned || isSidebarHovered;
 
@@ -92,18 +93,45 @@ export default function Layout() {
       { name: 'Admin Dashboard', href: '/admin', icon: ShieldCheck },
     ] : []),
     ...(user?.role !== 'admin' ? [{ name: 'Dashboard', href: '/', icon: Home }] : []),
-    { name: 'Documents', href: '/documents', icon: FolderOpen },
-    { name: 'Upload', href: '/upload', icon: UploadCloud },
-    { name: 'Templates', href: '/folder', icon: FileSignature },
+    { name: 'My Documents', href: '/documents', icon: FolderOpen },
+    { name: 'New Document', href: '/upload', icon: UploadCloud },
+    // { name: 'My Templates', href: '/folder', icon: FileSignature },
     { name: 'Profile Settings', href: '/Settings', icon: Settings },
-    ...(user?.role === 'admin' ? [{ name: 'Audit Logs', href: '/admin/audit-logs', icon: ScrollText }] : []),
-    ...(user?.role === 'admin' ? [{ name: 'Turnaround Audit', href: '/admin/turnaround', icon: Clock }] : []),
+    ...(user?.role === 'admin' ? [
+      { name: 'All Documents', href: '/admin/all-documents', icon: Layers },
+      { name: 'Audit Logs', href: '/admin/audit-logs', icon: ScrollText },
+      { name: 'Turnaround Audit', href: '/admin/turnaround', icon: Clock }
+    ] : []),
   ];
+  // Clear dynamic title when route changes
+  useEffect(() => {
+    setDynamicTitle('');
+  }, [location.pathname]);
+
   // Dynamically set the Header Title based on the current URL route
   const getPageTitle = () => {
+    if (dynamicTitle) return dynamicTitle;
+
     const currentRoute = navigation.find(item => item.href === location.pathname);
-    return currentRoute ? currentRoute.name : 'Document Viewer';
+    if (currentRoute) return currentRoute.name;
+
+    // Smart fallbacks for dynamic routes
+    if (location.pathname.startsWith('/review/')) return 'Review Document';
+    if (location.pathname.startsWith('/sign/')) return 'Sign Document';
+    if (location.pathname.startsWith('/admin/audit-logs')) return 'Audit Logs';
+    if (location.pathname.startsWith('/admin/turnaround')) return 'Turnaround Audit';
+    if (location.pathname.startsWith('/admin/all-documents')) return 'All Documents';
+    if (location.pathname.startsWith('/admin')) return 'Admin Dashboard';
+    if (location.pathname.startsWith('/upload')) return 'New Document';
+    
+    return 'Document Viewer';
   };
+
+  // Sync browser tab title
+  useEffect(() => {
+    const title = getPageTitle();
+    document.title = title ? `${title} | DSign` : 'DSign';
+  }, [dynamicTitle, location.pathname, user]);
 
   const NavLinks = ({ isExpanded = true }) => (
     <>
@@ -148,9 +176,7 @@ export default function Layout() {
         </button>
 
         <div className={`flex items-center h-16 border-b border-slate-800 transition-all duration-300 ${isSidebarExpanded ? 'px-6 justify-start' : 'justify-center'}`}>
-          <div className="h-8 w-8 bg-white rounded flex items-center justify-center shadow-sm flex-shrink-0">
-            <PenTool className="text-slate-900 h-5 w-5" />
-          </div>
+          <img src="/DSign Logo.svg" alt="DSign Logo" className="h-10 w-10 rounded-lg object-contain flex-shrink-0" />
           {isSidebarExpanded && (
             <span className="text-xl font-bold tracking-tight text-white ml-3 truncate">DSign</span>
           )}
@@ -173,9 +199,7 @@ export default function Layout() {
           <div className="relative flex flex-col w-64 max-w-xs bg-slate-900 h-full shadow-2xl animate-in slide-in-from-left duration-300">
             <div className="flex items-center justify-between px-6 h-16 border-b border-slate-800">
               <div className="flex items-center">
-                <div className="h-8 w-8 bg-white rounded flex items-center justify-center mr-3 flex-shrink-0">
-                  <PenTool className="text-slate-900 h-5 w-5" />
-                </div>
+                <img src="/DSign Logo.svg" alt="DSign Logo" className="h-10 w-10 mr-3 rounded-lg object-contain flex-shrink-0" />
                 <span className="text-xl font-bold tracking-tight text-white">DSign</span>
               </div>
               <button onClick={() => setIsMobileMenuOpen(false)} className="text-slate-400 hover:text-white">
@@ -203,7 +227,7 @@ export default function Layout() {
             >
               <Menu className="h-6 w-6" />
             </button>
-            <h1 className="text-lg font-semibold text-slate-900 truncate">
+            <h1 className="text-sm sm:text-lg font-semibold text-slate-900 truncate max-w-[200px] sm:max-w-xs md:max-w-md lg:max-w-xl">
               {getPageTitle()}
             </h1>
           </div>
@@ -261,7 +285,7 @@ export default function Layout() {
 
         {/* Dynamic Page Content (This is where Dashboard.jsx renders) */}
         <main className="flex-1 overflow-y-auto bg-[#FAFAFA]">
-          <Outlet context={{ user }} />
+          <Outlet context={{ user, setDynamicTitle }} />
         </main>
 
       </div>

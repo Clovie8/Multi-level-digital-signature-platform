@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useAsyncLock } from '../../hooks/useAsyncLock';
 import { useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
@@ -68,7 +69,7 @@ const PasswordStrength = ({ password }) => {
 };
 
 // 6-Box OTP Input Component
-const OTPInput = ({ value, onChange, autoFocus }) => {
+const OTPInput = ({ value, onChange, autoFocus, disabled }) => {
   const inputs = useRef([]);
   const length = 6;
   const [otpArray, setOtpArray] = useState(Array(length).fill(''));
@@ -143,7 +144,8 @@ const OTPInput = ({ value, onChange, autoFocus }) => {
           onChange={(e) => handleChange(e, i)}
           onKeyDown={(e) => handleKeyDown(e, i)}
           onPaste={handlePaste}
-          className="w-10 h-12 text-center text-lg font-semibold border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 transition-colors shadow-sm bg-white"
+          disabled={disabled}
+          className="w-10 h-12 text-center text-lg font-semibold border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 transition-colors shadow-sm bg-white disabled:bg-slate-50 disabled:text-slate-500"
         />
       ))}
     </div>
@@ -158,6 +160,18 @@ export default function Auth() {
 
   useEffect(() => {
     sessionStorage.setItem('authView', view);
+    
+    // Update browser tab title dynamically based on the current view
+    let title = 'Sign In';
+    switch (view) {
+      case 'register': title = 'Create Account'; break;
+      case 'forgot': title = 'Forgot Password'; break;
+      case 'reset': title = 'Reset Password'; break;
+      case 'verify': title = 'Verify Email'; break;
+      case 'invite-password': title = 'Set Password'; break;
+      default: title = 'Sign In'; break;
+    }
+    document.title = `${title} | DSign`;
   }, [view]);
 
   const [isLoading, setIsLoading] = useState(false);
@@ -225,7 +239,7 @@ export default function Auth() {
     return () => clearTimeout(timeout);
   }, [view]);
 
-  const handleLogin = async (e) => {
+  const [handleLogin, isLoggingIn] = useAsyncLock(async (e) => {
     e.preventDefault();
 
     // Email validation
@@ -233,7 +247,6 @@ export default function Auth() {
       return toast.error("Please enter a valid email address format.");
     }
 
-    setIsLoading(true);
     try {
       const res = await api.post('/api/auth/login', {
         email: formData.email,
@@ -254,12 +267,10 @@ export default function Auth() {
       } else {
         toast.error(err.response?.data?.error || 'Invalid credentials');
       }
-    } finally {
-      setIsLoading(false);
     }
-  };
+  });
 
-  const handleRegister = async (e) => {
+  const [handleRegister, isRegistering] = useAsyncLock(async (e) => {
     e.preventDefault();
 
     // Email Validation 
@@ -274,7 +285,6 @@ export default function Auth() {
       return toast.error('Please ensure your password meets all requirements.');
     }
 
-    setIsLoading(true);
     try {
       await api.post('/api/auth/register', {
         name: formData.name,
@@ -285,16 +295,13 @@ export default function Auth() {
       setView('verify');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Registration failed');
-    } finally {
-      setIsLoading(false);
     }
-  };
+  });
 
-  const handleVerify = async (e) => {
+  const [handleVerify, isVerifying] = useAsyncLock(async (e) => {
     e.preventDefault();
     if (formData.otp.length !== 6) return toast.error('Please enter the full 6-digit code.');
 
-    setIsLoading(true);
     try {
       await api.post('/api/auth/verify', {
         email: formData.email,
@@ -310,17 +317,14 @@ export default function Auth() {
       }
     } catch (err) {
       toast.error(err.response?.data?.error || 'Invalid verification code');
-    } finally {
-      setIsLoading(false);
     }
-  };
+  });
 
-  const handleResend = async () => {
+  const [handleResend, isResending] = useAsyncLock(async () => {
     if (!formData.email) {
       return toast.error('Email address is missing. Please try logging in again.');
     }
 
-    setIsLoading(true);
     try {
       await api.post('/api/auth/resend-verification', {
         email: formData.email
@@ -328,12 +332,10 @@ export default function Auth() {
       toast.success('A new 6-digit code has been sent to your email.');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to resend code.');
-    } finally {
-      setIsLoading(false);
     }
-  };
+  });
 
-  const handleForgot = async (e) => {
+  const [handleForgot, isForgotting] = useAsyncLock(async (e) => {
     e.preventDefault();
 
     // Email validation
@@ -341,7 +343,6 @@ export default function Auth() {
       return toast.error("Please enter a valid email address format.");
     }
 
-    setIsLoading(true);
     try {
       await api.post('/api/auth/forgot-password', {
         email: formData.email
@@ -351,14 +352,11 @@ export default function Auth() {
       setView('reset');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to send reset link.');
-    } finally {
-      setIsLoading(false);
     }
-  };
+  });
 
-  const handleReset = async (e) => {
+  const [handleReset, isResetting] = useAsyncLock(async (e) => {
     e.preventDefault();
-    setIsLoading(true);
     try {
       await api.post('/api/auth/reset-password', {
         email: formData.email,
@@ -370,12 +368,10 @@ export default function Auth() {
       setView('login');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Invalid token or failed to reset password.');
-    } finally {
-      setIsLoading(false);
     }
-  };
+  });
 
-  const handleCompleteInvite = async (e) => {
+  const [handleCompleteInvite, isCompletingInvite] = useAsyncLock(async (e) => {
     e.preventDefault();
     const hasLength = formData.password.length >= 8;
     const hasNumber = /\d/.test(formData.password);
@@ -384,7 +380,6 @@ export default function Auth() {
       return toast.error('Please ensure your password meets all requirements.');
     }
 
-    setIsLoading(true);
     try {
       const res = await api.post('/api/auth/complete-invite', {
         email: formData.email,
@@ -400,10 +395,8 @@ export default function Auth() {
       }
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to activate account.');
-    } finally {
-      setIsLoading(false);
     }
-  };
+  });
 
   const headings = {
     login: { title: 'Sign in', subtitle: 'Enter your email and password' },
@@ -422,9 +415,7 @@ export default function Auth() {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(59,130,246,0.15),transparent_50%)]" />
         <div className="relative z-10 flex flex-col justify-between p-12 w-full">
           <div className="flex items-center space-x-3">
-            <div className="h-10 w-10 bg-white rounded-lg flex items-center justify-center shadow-sm">
-              <PenTool className="text-slate-900 h-5 w-5" />
-            </div>
+            <img src="/DSign Logo.svg" alt="DSign Logo" className="h-12 w-12 rounded-xl object-contain flex-shrink-0" />
             <span className="text-2xl font-bold tracking-tight text-white">DSign</span>
           </div>
 
@@ -448,9 +439,7 @@ export default function Auth() {
           {/* Mobile-only logo (hidden on desktop since the left panel shows it) */}
           <div className="flex justify-center mb-8 lg:hidden">
             <div className="flex items-center space-x-2">
-              <div className="h-10 w-10 bg-slate-900 rounded-lg flex items-center justify-center shadow-sm">
-                <PenTool className="text-white h-5 w-5" />
-              </div>
+              <img src="/DSign Logo.svg" alt="DSign Logo" className="h-12 w-12 rounded-xl object-contain flex-shrink-0" />
               <span className="text-2xl font-bold tracking-tight text-slate-900">DSign</span>
             </div>
           </div>
@@ -516,21 +505,21 @@ export default function Auth() {
                 <form onSubmit={handleLogin} className="space-y-5">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Email Address</label>
-                    <InputField inputRef={loginEmailRef} icon={Mail} type="email" name="email" placeholder="name@example.com" value={formData.email} onChange={handleChange} />
+                    <InputField inputRef={loginEmailRef} icon={Mail} type="email" name="email" placeholder="name@example.com" value={formData.email} onChange={handleChange} disabled={isLoggingIn} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Password</label>
-                    <InputField icon={Lock} type="password" name="password" placeholder="Enter your password" value={formData.password} onChange={handleChange} isPassword />
+                    <InputField icon={Lock} type="password" name="password" placeholder="Enter your password" value={formData.password} onChange={handleChange} isPassword disabled={isLoggingIn} />
                     <div className="flex items-center justify-end mt-2">
                       <button type="button" onClick={() => setView('forgot')} className="text-xs font-medium text-blue-600 hover:text-blue-500 transition-colors">
                         Forgot password?
                       </button>
                     </div>
                   </div>
-                  <button disabled={isLoading} type="submit" className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900 transition-all disabled:opacity-50">
-                    {isLoading && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
-                    {isLoading ? 'Authenticating...' : 'Sign in'}
-                    {!isLoading && <ArrowRight className="ml-2 h-4 w-4" />}
+                  <button disabled={isLoggingIn} type="submit" className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900 transition-all disabled:opacity-50">
+                    {isLoggingIn && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
+                    {isLoggingIn ? 'Authenticating...' : 'Sign in'}
+                    {!isLoggingIn && <ArrowRight className="ml-2 h-4 w-4" />}
                   </button>
                 </form>
               </div>
@@ -539,15 +528,15 @@ export default function Auth() {
             {/* REGISTER VIEW */}
             {view === 'register' && (
               <form onSubmit={handleRegister} className="space-y-5">
-                <InputField inputRef={registerNameRef} icon={User} type="text" name="name" placeholder="Full Name" value={formData.name} onChange={handleChange} />
-                <InputField icon={Mail} type="email" name="email" placeholder="name@example.com" value={formData.email} onChange={handleChange} />
+                <InputField inputRef={registerNameRef} icon={User} type="text" name="name" placeholder="Full Name" value={formData.name} onChange={handleChange} disabled={isRegistering} />
+                <InputField icon={Mail} type="email" name="email" placeholder="name@example.com" value={formData.email} onChange={handleChange} disabled={isRegistering} />
                 <div>
-                  <InputField icon={Lock} type="password" name="password" placeholder="Create a strong password" value={formData.password} onChange={handleChange} isPassword />
+                  <InputField icon={Lock} type="password" name="password" placeholder="Create a strong password" value={formData.password} onChange={handleChange} isPassword disabled={isRegistering} />
                   <PasswordStrength password={formData.password} />
                 </div>
-                <button disabled={isLoading} type="submit" className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 focus:outline-none transition-all disabled:opacity-50 mt-4">
-                  {isLoading && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
-                  {isLoading ? 'Creating account...' : 'Create account'}
+                <button disabled={isRegistering} type="submit" className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 focus:outline-none transition-all disabled:opacity-50 mt-4">
+                  {isRegistering && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
+                  {isRegistering ? 'Creating account...' : 'Create account'}
                 </button>
                 <button type="button" onClick={() => setView('login')} className="w-full text-center text-xs font-medium text-slate-500 hover:text-slate-800 mt-2 transition-colors">
                   Back to sign in
@@ -567,12 +556,12 @@ export default function Auth() {
                   <InputField icon={Mail} type="email" name="email" value={formData.email} disabled />
                 </div>
                 <div>
-                  <InputField icon={Lock} type="password" name="password" placeholder="Create a strong password" value={formData.password} onChange={handleChange} isPassword />
+                  <InputField icon={Lock} type="password" name="password" placeholder="Create a strong password" value={formData.password} onChange={handleChange} isPassword disabled={isCompletingInvite} />
                   <PasswordStrength password={formData.password} />
                 </div>
-                <button disabled={isLoading} type="submit" className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 focus:outline-none transition-all disabled:opacity-50">
-                  {isLoading && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
-                  {isLoading ? 'Setting up...' : 'Set Password & Sign In'}
+                <button disabled={isCompletingInvite} type="submit" className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 focus:outline-none transition-all disabled:opacity-50">
+                  {isCompletingInvite && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
+                  {isCompletingInvite ? 'Setting up...' : 'Set Password & Sign In'}
                 </button>
               </form>
             )}
@@ -581,22 +570,24 @@ export default function Auth() {
             {view === 'verify' && (
               <form onSubmit={handleVerify} className="space-y-5">
                 <div className="flex justify-center">
-                  <OTPInput value={formData.otp} onChange={handleChange} autoFocus={true} />
+                  <OTPInput value={formData.otp} onChange={handleChange} autoFocus={true} disabled={isVerifying} />
                 </div>
 
-                <button disabled={isLoading} type="submit" className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 transition-all disabled:opacity-50 mt-4">
-                  {isLoading && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
-                  {isLoading ? 'Verifying...' : 'Verify Account'}
+                <button disabled={isVerifying} type="submit" className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 transition-all disabled:opacity-50 mt-4">
+                  {isVerifying && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
+                  {isVerifying ? 'Verifying...' : 'Verify Account'}
                 </button>
 
                 <div className="text-center mt-4">
                   <button
                     type="button"
                     onClick={handleResend}
-                    disabled={isLoading}
+                    disabled={isResending}
                     className="text-xs font-medium text-slate-500 hover:text-slate-900 transition-colors disabled:opacity-50"
                   >
-                    Didn't receive it? <span className="text-blue-600 font-semibold">Resend code</span>
+                    {isResending ? 'Resending...' : (
+                      <>Didn't receive it? <span className="text-blue-600 font-semibold">Resend code</span></>
+                    )}
                   </button>
                 </div>
 
@@ -611,11 +602,11 @@ export default function Auth() {
             {/* FORGOT PASSWORD VIEW */}
             {view === 'forgot' && (
               <form onSubmit={handleForgot} className="space-y-5">
-                <InputField inputRef={forgotEmailRef} icon={Mail} type="email" name="email" placeholder="Enter your registered email" value={formData.email} onChange={handleChange} />
-                <button disabled={isLoading} type="submit" className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 transition-all disabled:opacity-50">
-                  {isLoading && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
-                  {isLoading ? 'Sending...' : 'Send Reset Token'}
-                  {!isLoading && <ArrowRight className="ml-2 h-4 w-4" />}
+                <InputField inputRef={forgotEmailRef} icon={Mail} type="email" name="email" placeholder="Enter your registered email" value={formData.email} onChange={handleChange} disabled={isForgotting} />
+                <button disabled={isForgotting} type="submit" className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 transition-all disabled:opacity-50">
+                  {isForgotting && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
+                  {isForgotting ? 'Sending...' : 'Send Reset Token'}
+                  {!isForgotting && <ArrowRight className="ml-2 h-4 w-4" />}
                 </button>
 
                 <button type="button" onClick={() => setView('login')} className="w-full text-center text-xs font-medium text-slate-500 hover:text-slate-800 mt-2 transition-colors">
@@ -627,14 +618,14 @@ export default function Auth() {
             {/* RESET PASSWORD VIEW */}
             {view === 'reset' && (
               <form onSubmit={handleReset} className="space-y-5">
-                <InputField inputRef={resetTokenRef} icon={Key} type="text" name="resetToken" placeholder="Enter 6-character reset code" value={formData.resetToken} onChange={handleChange} />
+                <InputField inputRef={resetTokenRef} icon={Key} type="text" name="resetToken" placeholder="Enter 6-character reset code" value={formData.resetToken} onChange={handleChange} disabled={isResetting} />
                 <div>
-                  <InputField icon={Lock} type="password" name="password" placeholder="Enter new password" value={formData.password} onChange={handleChange} isPassword />
+                  <InputField icon={Lock} type="password" name="password" placeholder="Enter new password" value={formData.password} onChange={handleChange} isPassword disabled={isResetting} />
                   <PasswordStrength password={formData.password} />
                 </div>
-                <button disabled={isLoading} type="submit" className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 transition-all disabled:opacity-50 mt-4">
-                  {isLoading && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
-                  {isLoading ? 'Updating...' : 'Update Password'}
+                <button disabled={isResetting} type="submit" className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 transition-all disabled:opacity-50 mt-4">
+                  {isResetting && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
+                  {isResetting ? 'Updating...' : 'Update Password'}
                 </button>
 
                 <button type="button" onClick={() => setView('login')} className="w-full text-center text-xs font-medium text-slate-500 hover:text-slate-800 mt-2 transition-colors">

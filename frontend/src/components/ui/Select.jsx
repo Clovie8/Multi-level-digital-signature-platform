@@ -101,12 +101,12 @@ export default function Select({
         ref={buttonRef}
         type="button"
         onClick={handleToggle}
-        className={`w-full flex items-center justify-between text-left text-sm font-medium text-slate-700 px-3 py-2 rounded-md transition-colors focus:outline-none cursor-pointer ${buttonClassName} ${isOpen ? 'ring-1 ring-slate-900 border-slate-900 bg-slate-50' : ''}`}
+        className={`w-full flex items-center justify-between text-left text-[11px] sm:text-sm font-medium text-slate-700 px-2 sm:px-3 py-1.5 sm:py-2 rounded-md transition-colors focus:outline-none cursor-pointer ${buttonClassName} ${isOpen ? 'ring-1 ring-slate-900 border-slate-900 bg-slate-50' : ''}`}
       >
         <span className="block truncate">
           {selectedOption ? selectedOption.label : placeholder}
         </span>
-        <ChevronDown className={`h-4 w-4 text-slate-400 shrink-0 ml-2 transition-transform duration-200 ${isOpen ? 'rotate-180 text-slate-700' : ''}`} />
+        <ChevronDown className={`h-3.5 w-3.5 sm:h-4 sm:w-4 text-slate-400 shrink-0 ml-1.5 sm:ml-2 transition-transform duration-200 ${isOpen ? 'rotate-180 text-slate-700' : ''}`} />
       </button>
 
       {isOpen && createPortal(
@@ -116,19 +116,19 @@ export default function Select({
           style={dropdownStyle}
         >
           {searchable && (
-            <div className="p-2 border-b border-slate-100 shrink-0 relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            <div className="p-1.5 sm:p-2 border-b border-slate-100 shrink-0 relative">
+              <Search className="absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 h-3 w-3 sm:h-3.5 sm:w-3.5 text-slate-400" />
               <input 
                 ref={searchInputRef}
                 type="text" 
                 placeholder="Search..." 
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 text-sm bg-slate-50 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-slate-900"
+                className="w-full pl-7 sm:pl-8 pr-2 sm:pr-3 py-1 sm:py-1.5 text-[11px] sm:text-sm bg-slate-50 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-slate-900"
               />
             </div>
           )}
-          <ul className="py-1 text-sm text-slate-700 overflow-y-auto flex-1">
+          <ul className="py-1 text-[11px] sm:text-sm text-slate-700 overflow-y-auto flex-1">
             {filteredOptions.length > 0 ? (
               filteredOptions.map((option) => (
                 <li
@@ -137,14 +137,14 @@ export default function Select({
                     onChange(option.value);
                     setIsOpen(false);
                   }}
-                  className={`relative cursor-pointer select-none py-2.5 pl-3 pr-9 hover:bg-slate-50 hover:text-slate-900 transition-colors ${
+                  className={`relative cursor-pointer select-none py-1.5 sm:py-2.5 pl-2 sm:pl-3 pr-7 sm:pr-9 hover:bg-slate-50 hover:text-slate-900 transition-colors ${
                     option.value === value ? 'bg-slate-50/80 font-semibold text-slate-900' : 'font-medium'
                   } ${option.className || ''}`}
                 >
                   <span className="block truncate">{option.label}</span>
                   {option.value === value && (
-                    <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-900">
-                      <Check className="h-4 w-4" />
+                    <span className="absolute inset-y-0 right-0 flex items-center pr-2 sm:pr-3 text-slate-900">
+                      <Check className="h-3 w-3 sm:h-4 sm:w-4" />
                     </span>
                   )}
                 </li>

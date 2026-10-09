@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useAsyncLock } from '../../hooks/useAsyncLock';
 import { useOutletContext } from 'react-router-dom';
 import api from '../../lib/api';
 import { toast } from 'react-hot-toast';
@@ -7,11 +8,9 @@ import { User, Mail, Lock, Loader2, Eye, EyeOff } from 'lucide-react';
 export default function Settings() {
   const { user } = useOutletContext();
   const [name, setName] = useState('');
-  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [isSavingPassword, setIsSavingPassword] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
 
@@ -21,22 +20,19 @@ export default function Settings() {
 
   const hasPassword = user?.authProvider === 'local' || !user?.authProvider;
 
-  const handleProfileSubmit = async (e) => {
+  const [handleProfileSubmit, isSavingProfile] = useAsyncLock(async (e) => {
     e.preventDefault();
     if (!name.trim()) return toast.error('Name cannot be empty.');
 
-    setIsSavingProfile(true);
     try {
       await api.patch('/api/auth/me', { name: name.trim() });
       toast.success('Profile updated.');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to update profile.');
-    } finally {
-      setIsSavingProfile(false);
     }
-  };
+  });
 
-  const handlePasswordSubmit = async (e) => {
+  const [handlePasswordSubmit, isSavingPassword] = useAsyncLock(async (e) => {
     e.preventDefault();
     if (!currentPassword || !newPassword) return toast.error('Both password fields are required.');
 
@@ -52,7 +48,6 @@ export default function Settings() {
       return toast.error('New password must be at least 8 characters, with a number and a special character.');
     }
 
-    setIsSavingPassword(true);
     try {
       await api.patch('/api/auth/change-password', { currentPassword, newPassword });
       toast.success('Password updated.');
@@ -60,10 +55,8 @@ export default function Settings() {
       setNewPassword('');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to update password.');
-    } finally {
-      setIsSavingPassword(false);
     }
-  };
+  });
 
   return (
     <div className="min-h-full bg-white">
@@ -79,7 +72,7 @@ export default function Settings() {
                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-4xl">
 
           {/* Profile Section */}
-          <form onSubmit={handleProfileSubmit} className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 h-fit">
+          <form onSubmit={handleProfileSubmit} className="bg-white rounded-md border border-slate-200 shadow-sm p-6 h-fit">
             <h2 className="text-sm font-semibold text-slate-900 mb-4">Profile</h2>
 
             <div className="space-y-4">
@@ -120,7 +113,7 @@ export default function Settings() {
 
           {/* Password Section */}
           {hasPassword ? (
-            <form onSubmit={handlePasswordSubmit} className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+            <form onSubmit={handlePasswordSubmit} className="bg-white rounded-md border border-slate-200 shadow-sm p-6">
               <h2 className="text-sm font-semibold text-slate-900 mb-4">Change Password</h2>
 
               <div className="space-y-4">
