@@ -890,13 +890,17 @@ export default function Upload() {
     const unscaledWidth = bounds.width / pdfScale;
     const unscaledHeight = bounds.height / pdfScale;
     
-    const xPct = (newX / unscaledWidth) * 100;
-    const yPct = (newY / unscaledHeight) * 100;
+    // Mathematically prevent the field from going outside the bounds of the page
+    const clampedX = Math.max(0, Math.min(newX, unscaledWidth - targetField.width));
+    const clampedY = Math.max(0, Math.min(newY, unscaledHeight - targetField.height));
+    
+    const xPct = (clampedX / unscaledWidth) * 100;
+    const yPct = (clampedY / unscaledHeight) * 100;
 
     if (targetField.type === 'Initial') {
-      setFields(prev => prev.map(f => (f.type === 'Initial' && f.signerId === targetField.signerId) ? { ...f, x: newX, y: newY, xPct: xPct, yPct: yPct } : f));
+      setFields(prev => prev.map(f => (f.type === 'Initial' && f.signerId === targetField.signerId) ? { ...f, x: clampedX, y: clampedY, xPct: xPct, yPct: yPct } : f));
     } else {
-      setFields(prev => prev.map(f => f.id === id ? { ...f, x: newX, y: newY, xPct: xPct, yPct: yPct } : f));
+      setFields(prev => prev.map(f => f.id === id ? { ...f, x: clampedX, y: clampedY, xPct: xPct, yPct: yPct } : f));
     }
   };
 
@@ -1575,7 +1579,7 @@ export default function Upload() {
                                     dragStartPositionsRef.current = originalPositions;
                                     dragStartMouseRef.current = { x: data.x, y: data.y };
                                   }}
-                                  onDrag={(data) => {
+                                  onDrag={(e, data) => {
                                     hasDraggedRef.current = true;
                                     handleDrag(field.id, data);
                                     
@@ -1594,7 +1598,7 @@ export default function Upload() {
                                       }));
                                     }
                                   }}
-                                  onDragStop={(data) => {
+                                  onDragStop={(e, data) => {
                                     setDragGuides({ horizontal: null, vertical: null });
                                     
                                     if (selectedFieldIds.length > 1 && selectedFieldIds.includes(field.id)) {
@@ -1611,7 +1615,7 @@ export default function Upload() {
                                       updateFieldPosition(field.id, data.x, data.y);
                                     }
                                   }}
-                                  onResizeStop={(ref, position) => {
+                                  onResizeStop={(e, direction, ref, delta, position) => {
                                     updateFieldSize(field.id, parseInt(ref.style.width), parseInt(ref.style.height));
                                     updateFieldPosition(field.id, position.x, position.y);
                                   }}
