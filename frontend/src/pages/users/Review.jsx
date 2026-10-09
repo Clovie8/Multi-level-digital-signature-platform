@@ -4,7 +4,8 @@ import { useNavigate, useParams, useLocation, useOutletContext } from 'react-rou
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { ChevronLeft, ChevronRight, ArrowLeft, CheckCircle2, Download, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowLeft, CheckCircle2, Download, Loader2, Users, X } from 'lucide-react';
+import { useRef } from 'react';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -73,6 +74,12 @@ export default function Review() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [pendingFields, setPendingFields] = useState([]);
+  const [showSidebar, setShowSidebar] = useState(false);
+
+  // Responsive scale state
+  const [scale, setScale] = useState(1);
+  const [docHeight, setDocHeight] = useState(0);
+  const containerRef = useRef(null);
 
   const isTemplate = searchParams.get('model') === 'Template';
 
@@ -150,21 +157,62 @@ export default function Review() {
     loadReviewFile();
   }, [id, navigate, isPreview, isResume, isTemplate]);
 
+  // Responsive scale & height logic
+  useEffect(() => {
+    const calculateScale = () => {
+      const screenWidth = document.documentElement.clientWidth;
+      if (screenWidth < 800) {
+        setScale((screenWidth * 0.95) / 750);
+      } else {
+        // Adjust for sidebar width if visible
+        const availableWidth = showSidebar ? screenWidth - 300 : screenWidth;
+        setScale(Math.min(1, (availableWidth - 64) / 750));
+      }
+    };
+    window.addEventListener("resize", calculateScale);
+    calculateScale(); // initial calc
+    
+    // Track actual height of document
+    let resizeObserver = null;
+    if (containerRef.current) {
+      resizeObserver = new ResizeObserver((entries) => {
+        if (entries.length > 0) {
+          setDocHeight(entries[0].contentRect.height);
+        }
+      });
+      resizeObserver.observe(containerRef.current);
+    }
+    
+    return () => {
+      window.removeEventListener("resize", calculateScale);
+      if (resizeObserver) resizeObserver.disconnect();
+    };
+  }, [fileUrl, showSidebar]);
+
   // Continuous Scroll Functions
   const handleScroll = (e) => {
     const container = e.target;
-    const scrollPosition = container.scrollTop;
+    const containerRect = container.getBoundingClientRect();
+    const containerCenter = containerRect.top + containerRect.height / 2;
     
     let bestPage = 1;
     let minDistance = Infinity;
 
-    for (let i = 1; i <= totalPages; i++) {
-      const pageEl = document.getElementById(`review-page-${i}`);
-      if (pageEl) {
-        const distance = Math.abs(pageEl.offsetTop - scrollPosition);
-        if (distance < minDistance) {
-          minDistance = distance;
-          bestPage = i;
+    const isAtBottom = Math.ceil(container.scrollTop + container.clientHeight) >= (container.scrollHeight - 10);
+
+    if (isAtBottom) {
+      bestPage = totalPages;
+    } else {
+      for (let i = 1; i <= totalPages; i++) {
+        const pageEl = document.getElementById(`review-page-${i}`);
+        if (pageEl) {
+          const pageRect = pageEl.getBoundingClientRect();
+          const pageCenter = pageRect.top + (pageRect.height / 2);
+          const distance = Math.abs(pageCenter - containerCenter);
+          if (distance < minDistance) {
+            minDistance = distance;
+            bestPage = i;
+          }
         }
       }
     }
@@ -218,23 +266,25 @@ export default function Review() {
   });
 
   return (
-    <div className="min-h-full bg-slate-50 flex flex-col">
-      <div className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 flex-shrink-0">
-        <button onClick={() => navigate(isFromAdmin ? '/admin/all-documents' : '/documents')} className="flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors">
-          <ArrowLeft className="h-4 w-4" /> {isFromAdmin ? 'Back to All Documents' : 'Back to Documents'}
+    <div className="min-h-full bg-slate-50 flex flex-col relative overflow-hidden">
+      <div className="h-14 sm:h-16 bg-white border-b border-slate-200 flex items-center justify-between px-2 sm:px-4 flex-shrink-0 z-20">
+        <button onClick={() => navigate(isFromAdmin ? '/admin/all-documents' : '/documents')} className="flex items-center gap-1 sm:gap-2 text-[11px] sm:text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors">
+          <ArrowLeft className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">{isFromAdmin ? 'Back to All Documents' : 'Back to Documents'}</span><span className="sm:hidden">Back</span>
         </button>
 
-        <div className="flex items-center gap-2">
-          <button onClick={() => scrollToPage(Math.max(currentPage - 1, 1))} disabled={currentPage <= 1} className="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors disabled:opacity-50">
-            <ChevronLeft className="h-5 w-5" />
+        <div className="flex items-center gap-1 sm:gap-2">
+          <button onClick={() => scrollToPage(Math.max(currentPage - 1, 1))} disabled={currentPage <= 1} className="p-1 sm:p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors disabled:opacity-50">
+            <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
-          <span className="text-sm font-medium text-slate-600">Page {currentPage} of {totalPages}</span>
-          <button onClick={() => scrollToPage(Math.min(currentPage + 1, totalPages))} disabled={currentPage >= totalPages} className="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors disabled:opacity-50">
-            <ChevronRight className="h-5 w-5" />
+          <span className="text-[10px] sm:text-sm font-medium text-slate-600">Pg {currentPage}/{totalPages}</span>
+          <button onClick={() => scrollToPage(Math.min(currentPage + 1, totalPages))} disabled={currentPage >= totalPages} className="p-1 sm:p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors disabled:opacity-50">
+            <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
         </div>
 
-        <span className="text-sm font-semibold text-slate-900 truncate max-w-xs">{fileName} <span className="text-slate-400 font-normal">· read-only</span></span>
+        <span className="text-[10px] sm:text-sm font-semibold text-slate-900 truncate max-w-[60px] sm:max-w-[120px] md:max-w-[200px] lg:max-w-xs mx-1 sm:mx-2">
+          {fileName} <span className="text-slate-400 font-normal hidden sm:inline">· read-only</span>
+        </span>
 
         <div className="flex items-center gap-3">
           <button 
@@ -288,29 +338,42 @@ export default function Review() {
               {isUsingTemplate ? 'Starting...' : 'Use Template'}
             </button>
           )}
+          {!isResume && !isTemplate && pendingFields.length > 0 && (
+            <button
+              onClick={() => setShowSidebar(!showSidebar)}
+              className={`flex lg:hidden items-center justify-center p-1.5 rounded-md transition-colors ${showSidebar ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}
+            >
+              <Users className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
         {/* PDF Area */}
-        <div className="flex-1 overflow-auto p-4 sm:p-8 flex justify-center" onScroll={handleScroll}>
+        <div className="flex-1 overflow-auto bg-slate-200/50 flex flex-col relative py-4 sm:py-8" onScroll={handleScroll}>
           {isLoading ? (
             <div className="text-slate-400 text-sm py-20">Loading document…</div>
           ) : (
-            <Document
-              file={fileUrl}
-              onLoadSuccess={({ numPages }) => setTotalPages(numPages)}
-              className="flex flex-col items-center"
-              loading={
-                <div className="flex flex-col items-center justify-center p-12 text-slate-400">
-                  <Loader2 className="h-8 w-8 animate-spin mb-4 text-slate-300" />
-                  <p>Loading document...</p>
-                </div>
-              }
-              error={<div className="p-20 text-red-500">Failed to load PDF.</div>}
-            >
-              <div className="w-[750px] flex flex-col">
-                {Array.from(new Array(totalPages), (el, index) => {
+            <div className="mx-auto my-auto" style={{ width: 750 * scale, height: docHeight ? docHeight * scale : 'auto', minHeight: docHeight ? 'auto' : '50vh' }}>
+              <div 
+                ref={containerRef}
+                style={{ transform: `scale(${scale})`, transformOrigin: 'top left' }}
+                className="w-[750px] flex flex-col"
+              >
+                <Document
+                  file={fileUrl}
+                  onLoadSuccess={({ numPages }) => setTotalPages(numPages)}
+                  className="flex flex-col items-center"
+                  loading={
+                    <div className="flex flex-col items-center justify-center p-12 text-slate-400 w-[750px]">
+                      <Loader2 className="h-8 w-8 animate-spin mb-4 text-slate-300" />
+                      <p>Loading document...</p>
+                    </div>
+                  }
+                  error={<div className="p-20 text-red-500 text-center w-[750px]">Failed to load PDF.</div>}
+                >
+                  {Array.from(new Array(totalPages), (_, index) => {
                   const pageIndex = index + 1;
                   return (
                     <div 
@@ -348,20 +411,38 @@ export default function Review() {
                     </div>
                   );
                 })}
+                  </Document>
+                </div>
               </div>
-            </Document>
           )}
         </div>
 
         {/* Right Sidebar for Pending Signers */}
         {!isResume && !isTemplate && pendingFields.length > 0 && (
-          <div className="w-75 bg-white border border-slate-200 overflow-y-auto flex-shrink-0 animate-in slide-in-from-right-4 duration-300">
-            <div className="p-4 border border-slate-100 bg-slate-50/50 sticky top-0 z-10">
-              <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-amber-500"></span>
-                Pending Signers
-              </h3>
-            </div>
+          <>
+            {/* Mobile Overlay */}
+            {showSidebar && (
+              <div 
+                className="fixed inset-0 bg-slate-900/20 z-30 lg:hidden" 
+                onClick={() => setShowSidebar(false)}
+              />
+            )}
+            
+            <div className={`
+              absolute right-0 top-0 bottom-0 z-40 lg:relative lg:z-auto
+              w-72 sm:w-80 bg-white border-l border-slate-200 overflow-y-auto flex-shrink-0 
+              transition-transform duration-300 ease-in-out
+              ${showSidebar ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}
+            `}>
+              <div className="p-4 border-b border-slate-100 bg-slate-50/50 sticky top-0 z-10 flex items-center justify-between">
+                <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse"></span>
+                  Pending Signers
+                </h3>
+                <button onClick={() => setShowSidebar(false)} className="lg:hidden p-1 text-slate-400 hover:text-slate-600 bg-slate-100 rounded-md">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             <div className="p-4 space-y-4">
               {Array.from(new Set(pendingFields.map(f => f.signerEmail))).map(email => {
                 const signerFields = pendingFields.filter(f => f.signerEmail === email);
@@ -382,6 +463,7 @@ export default function Review() {
               })}
             </div>
           </div>
+          </>
         )}
       </div>
 

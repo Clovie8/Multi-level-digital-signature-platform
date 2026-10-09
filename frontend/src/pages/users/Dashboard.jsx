@@ -26,9 +26,9 @@ const ACTION_LABELS = {
 };
 
 const StatCard = ({ value, label }) => (
-  <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+  <div className="bg-white rounded-md border border-slate-200 shadow-sm p-5">
     <p className="text-2xl font-semibold text-slate-900">{value}</p>
-    <p className="text-xs font-medium text-slate-500 mt-1">{label}</p>
+    <p className="text-[11px] font-semibold uppercase text-slate-500 mt-2">{label}</p>
   </div>
 );
 
@@ -86,12 +86,12 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-full bg-white">
-      <div className="max-w-[1400px] mx-auto px-6 py-8">
+    <div className="min-h-full bg-slate-50/50">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6 sm:py-8">
 
         {/* Header */}
-        <div className="flex items-end justify-between gap-4 flex-wrap mb-6">
-          <div>
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 sm:gap-6 flex-wrap mb-6 sm:mb-8">
+          <div className="flex-1">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">Overview</p>
             <h1 className="text-2xl font-semibold text-slate-900">
               Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}{userName ? `, ${userName}` : ''}
@@ -119,7 +119,7 @@ export default function Dashboard() {
           </div>
           <button
             onClick={() => navigate('/upload')}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 text-white text-sm font-semibold rounded-md hover:bg-slate-800 transition-colors"
+            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-900 text-white text-sm font-semibold rounded-lg hover:bg-slate-800 transition-all w-full sm:w-auto shadow-sm hover:shadow-md active:scale-[0.98]"
           >
             <Plus className="h-4 w-4" />
             New document
@@ -127,7 +127,7 @@ export default function Dashboard() {
         </div>
 
         {/* Stats Row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
           <StatCard value={stats.waitingOnYou} label="Waiting on you" />
           <StatCard value={stats.inProgress} label="In progress (all)" />
           <StatCard value={stats.completedThisMonth} label="Completed this month" />
@@ -135,14 +135,14 @@ export default function Dashboard() {
         </div>
 
         {/* Status Breakdown + Completed Per Week */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
+          <div className="bg-white rounded-md border border-slate-200 shadow-sm p-5">
             <h2 className="text-sm font-semibold text-slate-900 mb-4">Status breakdown</h2>
             {statusPieData.every(d => d.value === 0) ? (
               <p className="text-sm text-slate-400 py-8 text-center">No documents yet.</p>
             ) : (
-              <div className="flex items-center gap-6">
-                <ResponsiveContainer width={130} height={130}>
+              <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
+                <ResponsiveContainer width={130} height={130} className="shrink-0">
                   <PieChart>
                     <Pie data={statusPieData} dataKey="value" outerRadius={60} stroke="none">
                       {statusPieData.map((entry, index) => (
@@ -151,9 +151,9 @@ export default function Dashboard() {
                     </Pie>
                   </PieChart>
                 </ResponsiveContainer>
-                <div className="space-y-2 flex-1">
+                <div className="space-y-2.5 w-full sm:flex-1">
                   {statusPieData.map((item) => (
-                    <div key={item.name} className="flex items-center justify-between gap-6 text-xs">
+                    <div key={item.name} className="flex items-center justify-between gap-4 text-xs sm:text-sm">
                       <div className="flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }}></span>
                         <span className="text-slate-600 font-medium">{item.name}</span>
@@ -166,7 +166,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+          <div className="bg-white rounded-md border border-slate-200 shadow-sm p-5">
             <h2 className="text-sm font-semibold text-slate-900 mb-4">Completed per week</h2>
             <ResponsiveContainer width="100%" height={150}>
               <BarChart data={completedPerWeek} barCategoryGap="30%" margin={{ top: 10, right: 10, left: 10, bottom: 15 }}>
@@ -197,8 +197,8 @@ export default function Dashboard() {
         </div>
 
         {/* Needs Attention + Recent Activity */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
+          <div className="bg-white rounded-md border border-slate-200 shadow-sm p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-slate-900">Needs your attention</h2>
               {needsAttention.length > 0 && (
@@ -215,27 +215,27 @@ export default function Dashboard() {
                   <div
                     key={item.id}
                     onClick={() => window.open(`/sign/${item.accessToken}`, '_blank', 'noopener,noreferrer')}
-                    className="flex items-center justify-between gap-4 px-2 py-2.5 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors"
+                    className="flex items-center justify-between gap-3 sm:gap-4 px-2 py-3 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors group"
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="h-8 w-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-                        <PenTool className="h-3.5 w-3.5" />
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 group-hover:bg-amber-100 transition-colors">
+                          <PenTool className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-900 truncate">{item.title}</p>
+                          <p className="text-[11px] sm:text-xs text-slate-500 truncate">{item.detail}</p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-900 truncate">{item.title}</p>
-                        <p className="text-xs text-slate-400">{item.detail}</p>
-                      </div>
+                      <span className="text-[11px] sm:text-xs font-semibold text-slate-400 group-hover:text-blue-600 flex items-center shrink-0 transition-colors">
+                        Sign now <ChevronRight className="h-3.5 w-3.5 ml-0.5 group-hover:translate-x-0.5 transition-transform" />
+                      </span>
                     </div>
-                    <span className="text-xs font-semibold text-slate-500 flex items-center shrink-0">
-                      Sign now <ChevronRight className="h-3.5 w-3.5 ml-0.5" />
-                    </span>
-                  </div>
                 ))}
               </div>
             )}
           </div>
 
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+          <div className="bg-white rounded-md border border-slate-200 shadow-sm p-5">
             <h2 className="text-sm font-semibold text-slate-900 mb-4">Recent activity</h2>
             {recentActivity.length === 0 ? (
               <p className="text-sm text-slate-400 py-4">No activity yet.</p>
@@ -256,8 +256,8 @@ export default function Dashboard() {
         </div>
 
         {/* Documents In Progress */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-          <div className="flex items-center justify-between mb-4">
+        <div className="bg-white rounded-md border border-slate-200 shadow-sm p-4 sm:p-5">
+          <div className="flex items-center justify-between mb-4 sm:mb-5">
             <h2 className="text-sm font-semibold text-slate-900">Documents in progress</h2>
             <button 
               onClick={() => navigate('/documents')} 
@@ -274,14 +274,16 @@ export default function Dashboard() {
               {documentsInProgress.map((doc) => (
                 <div
                   key={doc.id}
-                  className="flex items-center justify-between py-2.5 px-2 first:pt-0 last:pb-0 cursor-pointer hover:bg-slate-50 rounded-lg transition-colors"
+                  className="flex items-center justify-between py-3 px-2 sm:px-3 first:pt-0 last:pb-0 cursor-pointer hover:bg-slate-50 rounded-lg transition-colors group"
                   onClick={() => navigate(`/documents`)}
                 >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 text-slate-400 text-xs font-bold">▢</div>
+                  <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                    <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400 text-[10px] font-bold shadow-sm">
+                      <span className="opacity-60">DOC</span>
+                    </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-slate-900 truncate">{doc.title}</p>
-                      <p className="text-xs text-slate-400">{doc.detail}</p>
+                      <p className="text-sm font-semibold text-slate-900 truncate">{doc.title}</p>
+                      <p className="text-[11px] sm:text-xs text-slate-500 truncate">{doc.detail}</p>
                     </div>
                   </div>
                   <span className="shrink-0 inline-flex items-center gap-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 ml-3">

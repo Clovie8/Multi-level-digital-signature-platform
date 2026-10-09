@@ -39,51 +39,16 @@ const StatCard = ({ icon: Icon, value, label, onClick, isActive }) => (
       isActive ? 'border-blue-500 ring-1 ring-blue-500' : 'border-slate-200 hover:border-slate-300'
     }`}
   >
-    <div className="h-10 w-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-      <Icon className="h-5 w-5 text-slate-600" />
+    <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+      <Icon className="h-4 w-4 sm:h-5 sm:w-5 text-slate-600" />
     </div>
     <div>
-      <p className="text-2xl font-semibold text-slate-900">{value}</p>
-      <p className="text-xs font-medium text-slate-500">{label}</p>
+      <p className="text-lg sm:text-2xl font-semibold text-slate-900">{value}</p>
+      <p className="text-[10px] sm:text-xs font-medium text-slate-500 leading-tight">{label}</p>
     </div>
   </button>
 );
 
-function ConfirmModal({ isOpen, title, message, confirmText, isDanger, onConfirm, onCancel }) {
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4 animate-in fade-in" onClick={onCancel}>
-      <div
-        className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="p-6">
-          <h3 className="text-lg font-semibold text-slate-900 mb-2">{title}</h3>
-          <p className="text-sm text-slate-500 leading-relaxed">{message}</p>
-        </div>
-        <div className="bg-slate-50 border-t border-slate-100 p-4 flex justify-end gap-3">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-md transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-              isDanger
-                ? 'bg-red-600 text-white hover:bg-red-700 focus:ring-2 focus:ring-red-600 focus:ring-offset-2'
-                : 'bg-slate-900 text-white hover:bg-slate-800 focus:ring-2 focus:ring-slate-900 focus:ring-offset-2'
-            }`}
-          >
-            {confirmText || 'Confirm'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function DeactivateModal({ isOpen, userName, onConfirm, onCancel, isProcessing }) {
   const [reason, setReason] = useState('');
@@ -502,10 +467,10 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-full bg-white">
-      <div className="max-w-[1400px] mx-auto px-6 py-8">
+      <div className="max-w-[1400px] mx-auto px-2 sm:px-6 py-6 sm:py-8">
 
         {/* Header */}
-        <div className="flex items-end justify-between gap-4 flex-wrap mb-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 flex-wrap mb-6 px-2 sm:px-0">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">Admin</p>
             <h1 className="text-2xl font-semibold text-slate-900">System Admin dashboard</h1>
@@ -516,7 +481,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Stats Row */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-4 mb-8 px-2 sm:px-0">
           <StatCard
             icon={Users}
             value={users.length}
@@ -541,14 +506,14 @@ export default function AdminDashboard() {
         </div>
 
         {/* User Management */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between gap-4 flex-wrap p-5 pb-4">
+        <div className="bg-white sm:rounded-md border-y sm:border border-slate-200 shadow-sm overflow-hidden">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-4 sm:p-5 pb-4">
             <div>
               <h2 className="text-sm font-semibold text-slate-900">User management</h2>
               <p className="text-xs text-slate-400 mt-0.5">Invite, deactivate, and edit roles</p>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-64">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className="w-full sm:w-64">
                 <Select
                   options={userOptions}
                   value={selectedUserOption}
@@ -585,35 +550,44 @@ export default function AdminDashboard() {
               <p className="text-sm">Loading users…</p>
             </div>
           ) : (
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-t border-b border-slate-100">
-                  <th className="px-5 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Name</th>
-                  <th className="px-5 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Email</th>
-                  <th className="px-5 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Role</th>
-                  <th className="px-5 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Status</th>
-                  <th className="px-5 py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredUsers.map((u) => (
-                  <tr key={u.id} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50 transition-colors">
-                    <td className="px-5 py-3">
-                      <span className="text-sm font-medium text-slate-900">{u.name}</span>
-                    </td>
-                    <td className="px-5 py-3">
-                      <span className="text-sm text-slate-500">{u.email}</span>
-                    </td>
-                    <td className="px-5 py-3">
-                      <RoleBadge role={u.role} />
-                    </td>
-                    <td className="px-5 py-3">
-                      <StatusPill status={u.status} />
-                    </td>
-                    <td className="px-5 py-3 text-right">
-                      <UserActionsMenu user={u} currentUserId={user?.id} onActionComplete={fetchUsers} />
-                    </td>
+            <div className="overflow-visible min-h-[300px]">
+              <table className="w-full text-left table-fixed">
+                <thead>
+                  <tr className="border-t border-b border-slate-100">
+                    <th className="w-auto sm:w-[30%] px-2 sm:px-5 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Name</th>
+                    <th className="hidden sm:table-cell w-[35%] px-5 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Email</th>
+                    <th className="hidden sm:table-cell w-[15%] px-5 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Role</th>
+                    <th className="hidden sm:table-cell w-[15%] px-5 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Status</th>
+                    <th className="w-12 sm:w-[5%] px-2 sm:px-5 py-2"></th>
                   </tr>
+                </thead>
+                <tbody>
+                  {filteredUsers.map((u) => (
+                    <tr key={u.id} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50 transition-colors">
+                      <td className="px-2 sm:px-5 py-3 min-w-0">
+                        <div className="truncate w-[250px] xs:w-[220px] sm:w-auto">
+                          <span className="text-sm font-medium text-slate-900">{u.name}</span>
+                          <span className="sm:hidden mx-1.5 text-slate-300">|</span>
+                          <span className="sm:hidden text-xs text-slate-500">{u.email}</span>
+                        </div>
+                        <div className="sm:hidden flex flex-wrap items-center gap-1.5 mt-1.5">
+                          <RoleBadge role={u.role} />
+                          <StatusPill status={u.status} />
+                        </div>
+                      </td>
+                      <td className="hidden sm:table-cell px-5 py-3 min-w-0">
+                        <span className="text-sm text-slate-500 truncate block">{u.email}</span>
+                      </td>
+                      <td className="hidden sm:table-cell px-5 py-3">
+                        <RoleBadge role={u.role} />
+                      </td>
+                      <td className="hidden sm:table-cell px-5 py-3">
+                        <StatusPill status={u.status} />
+                      </td>
+                      <td className="px-2 sm:px-5 py-3 text-right align-top sm:align-middle">
+                        <UserActionsMenu user={u} currentUserId={user?.id} onActionComplete={fetchUsers} />
+                      </td>
+                    </tr>
                 ))}
                 {filteredUsers.length === 0 && (
                   <tr>
@@ -624,6 +598,7 @@ export default function AdminDashboard() {
                 )}
               </tbody>
             </table>
+            </div>
           )}
         </div>
 

@@ -335,7 +335,7 @@ export default function AllDocuments() {
 
   return (
     <div className="min-h-full bg-white">
-      <div className="max-w-[1400px] mx-auto px-6 py-8">
+      <div className="max-w-[1400px] mx-auto px-2 sm:px-6 py-6 sm:py-8">
         
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
@@ -388,7 +388,7 @@ export default function AllDocuments() {
             </button>
           </div>
           
-          <div className="flex items-center gap-3 w-full flex-wrap">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full flex-wrap">
             {activeTab === 'documents' && (
               <Select
                 value={statusFilter}
@@ -404,7 +404,7 @@ export default function AllDocuments() {
                   { value: 'superseded', label: 'Superseded' },
                   { value: 'voided', label: 'Voided' }
                 ]}
-                className="w-36"
+                className="w-full sm:w-36"
               />
             )}
             <Select
@@ -414,14 +414,14 @@ export default function AllDocuments() {
                 { value: 'newest', label: 'Sort: Newest first' },
                 { value: 'oldest', label: 'Sort: Oldest first' }
               ]}
-              className="w-40"
+              className="w-full sm:w-40"
             />
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
               <input
                 type="date"
                 value={dateRangeStart}
                 onChange={(e) => setDateRangeStart(e.target.value)}
-                className="w-32 sm:w-36 py-2 px-2.5 text-sm border border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900 text-slate-600"
+                className="flex-1 sm:flex-none sm:w-36 py-2 px-2.5 text-sm border border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900 text-slate-600"
                 title="Start Date"
               />
               <span className="text-slate-400 text-sm">-</span>
@@ -429,7 +429,7 @@ export default function AllDocuments() {
                 type="date"
                 value={dateRangeEnd}
                 onChange={(e) => setDateRangeEnd(e.target.value)}
-                className="w-32 sm:w-36 py-2 px-2.5 text-sm border border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900 text-slate-600"
+                className="flex-1 sm:flex-none sm:w-36 py-2 px-2.5 text-sm border border-slate-200 rounded-md focus:ring-slate-900 focus:border-slate-900 text-slate-600"
                 title="End Date"
               />
             </div>
@@ -447,23 +447,23 @@ export default function AllDocuments() {
         </div>
 
         {/* Table View */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
+        <div className="bg-white rounded-md border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
           {isLoading ? (
             <div className="flex-1 flex flex-col items-center justify-center py-20 text-slate-400">
               <Loader2 className="h-8 w-8 mb-3 animate-spin text-slate-300" />
               <p className="text-sm font-medium">Fetching global file registry…</p>
             </div>
           ) : activeTab === 'documents' ? (
-            <div className="flex-1 overflow-x-auto">
-              <table className="w-full text-left min-w-[800px]">
+            <div className="flex-1 overflow-visible min-h-[250px]">
+              <table className="w-full text-left table-fixed">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50/50">
-                    <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">File Name</th>
-                    <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">Status</th>
-                    <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">Initiator</th>
-                    <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">Active Signer</th>
-                    <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">Last Updated</th>
-                    <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500 text-right">Action</th>
+                    <th className="w-auto md:w-[30%] px-2 md:px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">File Name</th>
+                    <th className="hidden md:table-cell w-[15%] px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">Status</th>
+                    <th className="hidden md:table-cell w-[20%] px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">Initiator</th>
+                    <th className="hidden md:table-cell w-[15%] px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">Active Signer</th>
+                    <th className="hidden md:table-cell w-[15%] px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">Last Updated</th>
+                    <th className="w-12 md:w-[5%] px-2 md:px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500 text-right md:text-left">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -473,18 +473,26 @@ export default function AllDocuments() {
                       onClick={() => handleOpenDetail(doc.id)}
                       className="cursor-pointer border-b border-slate-100 last:border-b-0 hover:bg-slate-50 transition-colors"
                     >
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
+                      <td className="px-2 md:px-5 py-3 md:py-4 min-w-0">
+                        <div className="flex items-center gap-2 md:gap-3 min-w-0">
                           <div className="h-8 w-8 rounded bg-slate-100 flex items-center justify-center shrink-0">
                             <FileText className="h-4 w-4 text-slate-500" />
                           </div>
-                          <div>
-                            <p className="text-sm font-medium text-slate-900">{doc.fileName || 'Untitled Document'}</p>
-                            <p className="text-xs text-slate-500">{doc.signerCount} signer{doc.signerCount !== 1 && 's'}</p>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-slate-900 truncate pr-2">{doc.fileName || 'Untitled Document'}</p>
+                            <p className="hidden md:block text-xs text-slate-500">{doc.signerCount} signer{doc.signerCount !== 1 && 's'}</p>
+                            
+                            <div className="md:hidden flex flex-wrap items-center gap-1.5 mt-1.5">
+                               <StatusPill status={doc.status} />
+                               <span className="text-[10px] font-medium text-slate-500">
+                                 {doc.signerCount} signer{doc.signerCount !== 1 && 's'}
+                               </span>
+                               <span className="text-[10px] text-slate-400 whitespace-nowrap">{formatDistanceToNow(new Date(doc.updatedAt), { addSuffix: true })}</span>
+                            </div>
                           </div>
                         </div>
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="hidden md:table-cell px-5 py-4">
                         <div className="flex flex-col gap-1 items-start">
                           <div className="flex items-center gap-1">
                             <StatusPill status={doc.status} />
@@ -501,20 +509,22 @@ export default function AllDocuments() {
                           )}
                         </div>
                       </td>
-                      <td className="px-5 py-4">
-                        <p className="text-sm font-medium text-slate-900">{doc.initiatorName}</p>
-                        <p className="text-xs text-slate-500">{doc.initiatorEmail}</p>
+                      <td className="hidden md:table-cell px-5 py-4 min-w-0">
+                        <p className="text-sm font-medium text-slate-900 truncate">{doc.initiatorName}</p>
+                        <p className="text-xs text-slate-500 truncate">{doc.initiatorEmail}</p>
                       </td>
-                      <td className="px-5 py-4">
-                        <span className="text-sm text-slate-600">{doc.activeSigner || '—'}</span>
+                      <td className="hidden md:table-cell px-5 py-4 min-w-0">
+                        <span className="text-sm text-slate-600 truncate">{doc.activeSigner || '—'}</span>
                       </td>
-                      <td className="px-5 py-4">
-                        <span className="text-sm text-slate-500">
+                      <td className="hidden md:table-cell px-5 py-4">
+                        <span className="text-sm text-slate-500 whitespace-nowrap">
                           {formatDistanceToNow(new Date(doc.updatedAt), { addSuffix: true })}
                         </span>
                       </td>
-                      <td className="px-5 py-4 w-16 text-right">
-                        <RowActions document={doc} onView={handleOpenDetail} />
+                      <td className="px-2 md:px-5 py-3 md:py-4">
+                        <div className="flex justify-end md:justify-start">
+                          <RowActions document={doc} onView={handleOpenDetail} />
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -530,49 +540,59 @@ export default function AllDocuments() {
               </table>
             </div>
           ) : (
-            <div className="flex-1 overflow-x-auto">
-              <table className="w-full text-left min-w-[800px]">
+            <div className="flex-1 overflow-visible min-h-[250px]">
+              <table className="w-full text-left table-fixed">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50/50">
-                    <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">Template Name</th>
-                    <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">Creator</th>
-                    <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">Signers</th>
-                    <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">Usage</th>
-                    <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">Last Updated</th>
-                    <th className="px-3 py-3 w-16"></th>
+                    <th className="w-auto md:w-[30%] px-2 md:px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">Template Name</th>
+                    <th className="hidden md:table-cell w-[25%] px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">Creator</th>
+                    <th className="hidden md:table-cell w-[15%] px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">Signers</th>
+                    <th className="hidden md:table-cell w-[15%] px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">Usage</th>
+                    <th className="hidden md:table-cell w-[15%] px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500">Last Updated</th>
+                    <th className="w-12 md:w-[5%] px-2 md:px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-slate-500 text-right md:text-left">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedTemplates.map((t) => (
                     <tr key={t.id} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50 transition-colors">
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
+                      <td className="px-2 md:px-5 py-3 md:py-4 min-w-0">
+                        <div className="flex items-center gap-2 md:gap-3 min-w-0">
                           <div className="h-8 w-8 rounded bg-slate-100 flex items-center justify-center shrink-0">
                             <FileSignature className="h-4 w-4 text-slate-500" />
                           </div>
-                          <div>
-                            <p className="text-sm font-medium text-slate-900">{t.name || 'Untitled Template'}</p>
-                            <p className="text-xs text-slate-500">{t.fileName}</p>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-slate-900 truncate pr-2">{t.name || 'Untitled Template'}</p>
+                            <p className="hidden md:block text-xs text-slate-500 truncate">{t.fileName}</p>
+                            
+                            <div className="md:hidden flex flex-wrap items-center gap-1.5 mt-1.5">
+                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold whitespace-nowrap bg-purple-50 text-purple-700">Template</span>
+                               <span className="text-[10px] font-medium text-slate-500">
+                                 {t.signerCount} signer{t.signerCount !== 1 && 's'}
+                               </span>
+                               <span className="text-[10px] text-slate-400 whitespace-nowrap">{formatDistanceToNow(new Date(t.updatedAt), { addSuffix: true })}</span>
+                            </div>
                           </div>
                         </div>
                       </td>
-                      <td className="px-5 py-4">
-                        <p className="text-sm font-medium text-slate-900">{t.creatorName}</p>
-                        <p className="text-xs text-slate-500">{t.creatorEmail}</p>
+                      <td className="hidden md:table-cell px-5 py-4 min-w-0">
+                        <p className="text-sm font-medium text-slate-900 truncate">{t.creatorName}</p>
+                        <p className="text-xs text-slate-500 truncate">{t.creatorEmail}</p>
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="hidden md:table-cell px-5 py-4">
                         <span className="text-sm text-slate-600">{t.signerCount} required</span>
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="hidden md:table-cell px-5 py-4">
                         <span className="text-sm text-slate-600">{t.usageCount} times</span>
                       </td>
-                      <td className="px-5 py-4">
-                        <span className="text-sm text-slate-500">
+                      <td className="hidden md:table-cell px-5 py-4">
+                        <span className="text-sm text-slate-500 whitespace-nowrap">
                           {formatDistanceToNow(new Date(t.updatedAt), { addSuffix: true })}
                         </span>
                       </td>
-                      <td className="px-3 py-4 w-16 text-right">
-                        <TemplateRowActions template={t} />
+                      <td className="px-2 md:px-5 py-3 md:py-4">
+                        <div className="flex justify-end md:justify-start">
+                          <TemplateRowActions template={t} />
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -590,9 +610,9 @@ export default function AllDocuments() {
           )}
           
           {!isLoading && (
-            <div className="mt-auto flex items-center justify-between px-5 py-4 border-t border-slate-200">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-500">Show</span>
+            <div className="mt-auto flex items-center justify-between px-2 sm:px-4 py-3 border-t border-slate-200 gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <span className="hidden sm:inline text-sm text-slate-500">Show</span>
                 <Select
                   value={itemsPerPage}
                   onChange={(val) => {
@@ -604,25 +624,26 @@ export default function AllDocuments() {
                     { value: 50, label: '50' },
                     { value: 100, label: '100' }
                   ]}
-                  className="w-20"
+                  className="w-16 sm:w-20 text-[11px] sm:text-sm"
                 />
-                <span className="text-sm text-slate-500">entries</span>
+                <span className="text-[10px] sm:text-sm text-slate-500">entries</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2">
                 <button
                   onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
                   disabled={currentPage === 1}
-                  className="px-3 py-1 text-sm font-medium text-slate-600 bg-slate-50 rounded-md border border-slate-200 hover:bg-slate-100 disabled:opacity-50 transition-colors"
+                  className="px-2 sm:px-3 py-1.5 sm:py-1 text-[10px] sm:text-sm font-medium text-slate-600 bg-slate-50 rounded border border-slate-200 hover:bg-slate-100 disabled:opacity-50 transition-colors"
                 >
-                  Previous
+                  <span className="sm:hidden">Prev</span>
+                  <span className="hidden sm:inline">Previous</span>
                 </button>
-                <span className="text-sm font-medium text-slate-700">
-                  Page {currentPage} of {totalPages || 1}
+                <span className="text-[10px] sm:text-sm font-medium text-slate-700 mx-0.5 sm:mx-2 whitespace-nowrap">
+                  <span className="hidden sm:inline">Page </span>{currentPage} / {totalPages || 1}
                 </span>
                 <button
                   onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
                   disabled={currentPage === totalPages || totalPages === 0}
-                  className="px-3 py-1 text-sm font-medium text-slate-600 bg-slate-50 rounded-md border border-slate-200 hover:bg-slate-100 disabled:opacity-50 transition-colors"
+                  className="px-2 sm:px-3 py-1.5 sm:py-1 text-[10px] sm:text-sm font-medium text-slate-600 bg-slate-50 rounded border border-slate-200 hover:bg-slate-100 disabled:opacity-50 transition-colors"
                 >
                   Next
                 </button>

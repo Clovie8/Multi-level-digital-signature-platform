@@ -72,7 +72,7 @@ export default function Settings() {
                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-4xl">
 
           {/* Profile Section */}
-          <form onSubmit={handleProfileSubmit} className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 h-fit">
+          <form onSubmit={handleProfileSubmit} className="bg-white rounded-md border border-slate-200 shadow-sm p-6 h-fit">
             <h2 className="text-sm font-semibold text-slate-900 mb-4">Profile</h2>
 
             <div className="space-y-4">
@@ -113,7 +113,7 @@ export default function Settings() {
 
           {/* Password Section */}
           {hasPassword ? (
-            <form onSubmit={handlePasswordSubmit} className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+            <form onSubmit={handlePasswordSubmit} className="bg-white rounded-md border border-slate-200 shadow-sm p-6">
               <h2 className="text-sm font-semibold text-slate-900 mb-4">Change Password</h2>
 
               <div className="space-y-4">

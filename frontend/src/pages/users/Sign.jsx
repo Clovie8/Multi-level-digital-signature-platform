@@ -134,19 +134,6 @@ export default function Sign() {
 
   //RESPONSIVE STATE
   const [scale, setScale] = useState(1);
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 800) {
-        setScale((window.innerWidth - 32) / 750);
-      } else {
-        setScale(1);
-      }
-    };
-
-    window.addEventListener("resize", handleResize);
-    handleResize();
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
 
   // Image Upload & Cropping State
   const [uploadedImage, setUploadedImage] = useState(null);
@@ -234,38 +221,67 @@ export default function Sign() {
     setTotalPages(numPages);
   };
 
+  const [docHeight, setDocHeight] = useState(0);
+
   // Responsive scale logic
   useEffect(() => {
     const calculateScale = () => {
-      if (containerRef.current && containerRef.current.parentElement) {
-        const parentWidth = containerRef.current.parentElement.clientWidth;
-        // 750 is base width, subtract padding
-        const newScale = Math.min(1, (parentWidth - 48) / 750);
-        setScale(newScale);
+      const screenWidth = document.documentElement.clientWidth;
+      if (screenWidth < 800) {
+        // Exactly match the 95% width of the Action Required box on mobile
+        setScale((screenWidth * 0.95) / 750);
+      } else {
+        // On desktop, keep some side margins but don't scale up past 1x
+        setScale(Math.min(1, (screenWidth - 64) / 750));
       }
     };
     window.addEventListener("resize", calculateScale);
     calculateScale(); // initial calc
-    return () => window.removeEventListener("resize", calculateScale);
+    
+    // Track actual height of document to prevent empty space below scaled canvas
+    let resizeObserver = null;
+    if (containerRef.current) {
+      resizeObserver = new ResizeObserver((entries) => {
+        if (entries.length > 0) {
+          setDocHeight(entries[0].contentRect.height);
+        }
+      });
+      resizeObserver.observe(containerRef.current);
+    }
+    
+    return () => {
+      window.removeEventListener("resize", calculateScale);
+      if (resizeObserver) resizeObserver.disconnect();
+    };
   }, [documentFile]);
 
   // Continuous Scroll Functions
   const handleScroll = (e) => {
     const container = e.target;
-    const scrollPosition = container.scrollTop;
+    const containerRect = container.getBoundingClientRect();
+    const containerCenter = containerRect.top + containerRect.height / 2;
 
-    // Find the page currently most visible in the viewport
     let bestPage = 1;
     let minDistance = Infinity;
 
-    for (let i = 1; i <= totalPages; i++) {
-      const pageEl = document.getElementById(`page-container-${i}`);
-      if (pageEl) {
-        // Calculate the distance from the top of the container to the top of the page element
-        const distance = Math.abs(pageEl.offsetTop - scrollPosition);
-        if (distance < minDistance) {
-          minDistance = distance;
-          bestPage = i;
+    // Fast-track: if user scrolled to the absolute bottom (with 10px leeway)
+    const isAtBottom = Math.ceil(container.scrollTop + container.clientHeight) >= (container.scrollHeight - 10);
+
+    if (isAtBottom) {
+      bestPage = totalPages;
+    } else {
+      for (let i = 1; i <= totalPages; i++) {
+        const pageEl = document.getElementById(`page-container-${i}`);
+        if (pageEl) {
+          const pageRect = pageEl.getBoundingClientRect();
+          // Find distance from vertical center of container to vertical center of page
+          const pageCenter = pageRect.top + (pageRect.height / 2);
+          const distance = Math.abs(pageCenter - containerCenter);
+          
+          if (distance < minDistance) {
+            minDistance = distance;
+            bestPage = i;
+          }
         }
       }
     }
@@ -303,10 +319,15 @@ export default function Sign() {
             init = parts[0].substring(0, 2).toUpperCase();
           }
         }
-        setCompletedFields((prev) => ({
-          ...prev,
-          [field.id]: `TYPED::24::${init}`,
-        }));
+        setCompletedFields((prev) => {
+          const updates = {};
+          fields.forEach((f) => {
+            if (f.type === "Initial" && f.signerId === field.signerId) {
+              updates[f.id] = `TYPED::24::${init}`;
+            }
+          });
+          return { ...prev, ...updates };
+        });
       } else {
         setSignMode("draw");
         setIsModalOpen(true);
@@ -707,57 +728,57 @@ export default function Sign() {
   return (
     <div className="flex flex-col h-screen bg-[#FAFAFA] font-sans overflow-hidden">
       {/* PUBLIC HEADER - Clean and locked down */}
-      <header className="flex items-center justify-between px-6 h-16 bg-white border-b border-slate-200 shadow-sm z-10 shrink-0">
+      <header className="flex items-center justify-between px-3 sm:px-6 h-14 sm:h-16 bg-white border-b border-slate-200 shadow-sm z-10 shrink-0">
         <div className="flex items-center">
           <img
             src="/DSign Logo.svg"
             alt="DSign Logo"
-            className="h-10 w-10 mr-3 rounded-lg object-contain flex-shrink-0"
+            className="h-8 w-8 sm:h-10 sm:w-10 mr-2 sm:mr-3 rounded-lg object-contain flex-shrink-0"
           />
-          <span className="text-xl font-bold tracking-tight text-slate-900">
+          <span className="inline-block text-lg sm:text-xl font-bold tracking-tight text-slate-900">
             DSign
           </span>
         </div>
 
-        <div className="flex items-center space-x-4">
-          <div className="hidden sm:block text-right mr-4">
-            <p className="text-xs text-slate-500 uppercase tracking-wider font-bold">
+        <div className="flex items-center space-x-2 sm:space-x-4">
+          <div className="flex flex-col justify-center text-right mr-1.5 sm:mr-4">
+            <p className="text-[8px] sm:text-[10px] md:text-xs text-slate-500 uppercase tracking-wider font-bold leading-none mb-0.5 sm:mb-0 md:mb-1">
               Signing As
             </p>
-            <p className="text-sm font-semibold text-slate-900">
+            <p className="text-[10px] sm:text-xs md:text-sm font-semibold text-slate-900 truncate max-w-[60px] sm:max-w-[90px] md:max-w-[120px] leading-tight">
               {signerInfo?.name || "Guest Signer"}
             </p>
           </div>
           <button
             onClick={handleCompleteDocument}
             disabled={isCompleting || isDeclining}
-            className="flex items-center justify-center py-2 px-6 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-70"
+            className="flex items-center justify-center py-1.5 sm:py-2 px-2 sm:px-6 bg-blue-600 text-white text-[13px] sm:text-sm font-medium rounded hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-70 whitespace-nowrap"
           >
             {isCompleting ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="mr-1 sm:mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
             ) : (
-              <CheckCircle className="mr-2 h-4 w-4" />
+              <CheckCircle className="mr-1 sm:mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />
             )}
-            {isCompleting ? "Finishing..." : "Finish"}
+            <span>{isCompleting ? "Finishing..." : "Finish"}</span>
           </button>
 
           <button
             onClick={handleDeclineClick}
             disabled={isCompleting || isDeclining}
-            className="flex items-center justify-center py-2 px-6 bg-white border border-red-300 text-red-600 text-sm font-medium rounded hover:bg-red-50 transition-colors disabled:opacity-50"
+            className="flex items-center justify-center py-1.5 sm:py-2 px-2 sm:px-6 bg-white border border-red-300 text-red-600 text-[13px] sm:text-sm font-medium rounded hover:bg-red-50 transition-colors disabled:opacity-50 whitespace-nowrap"
           >
-            <X className="mr-2 h-4 w-4" /> Decline
+            <X className="mr-1 sm:mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4" /> <span>Decline</span>
           </button>
         </div>
       </header>
 
       {/* PDF VIEWER AND CANVAS */}
       <main
-        className="flex-1 overflow-auto bg-slate-200/50 flex flex-col relative py-8"
+        className="flex-1 overflow-auto bg-slate-200/50 flex flex-col relative py-4 sm:py-8"
         onScroll={handleScroll}
       >
         {/* --- FLOATING ACTION GUIDE --- */}
-        <div className="lg:absolute lg:left-6 lg:top-8 w-[90%] max-w-sm lg:w-56 mx-auto lg:mx-0 bg-white border border-slate-200 rounded-lg shadow-md lg:shadow-lg z-20 overflow-hidden animate-in fade-in slide-in-from-left-4 mb-6 lg:mb-0 shrink-0">
+        <div className="lg:absolute lg:left-6 lg:top-8 w-[95%] sm:w-[90%] max-w-sm lg:w-56 mx-auto lg:mx-0 bg-white border border-slate-200 rounded-lg shadow-md lg:shadow-lg z-20 overflow-hidden animate-in fade-in slide-in-from-left-4 mb-4 sm:mb-6 lg:mb-0 shrink-0">
           <div className="bg-slate-900 text-white px-4 py-3 text-sm font-semibold flex items-center justify-between">
             Action Required
             {pendingFields.length > 0 && (
@@ -837,7 +858,7 @@ export default function Sign() {
         </div>
 
         {/* The Actual Canvas Area */}
-        <div className="mx-auto" style={{ width: 750 * scale }}>
+        <div className="mx-auto my-auto" style={{ width: 750 * scale, height: docHeight ? docHeight * scale : 'auto', minHeight: docHeight ? 'auto' : '50vh' }}>
           <div
             ref={containerRef}
             style={{
@@ -1054,33 +1075,33 @@ export default function Sign() {
           ></div>
 
           <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50 shrink-0">
-              <h3 className="text-lg font-semibold text-slate-900">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-100 bg-slate-50 shrink-0">
+              <h3 className="text-base sm:text-lg font-semibold text-slate-900">
                 Adopt Your Signature
               </h3>
               <button
                 onClick={() => setIsModalOpen(false)}
                 className="text-slate-400 hover:text-slate-600"
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 w-4 sm:h-5 sm:w-5" />
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto">
+            <div className="p-4 sm:p-6 overflow-y-auto">
               {/* Toggle Draw / Type / Upload */}
-              <div className="flex space-x-4 mb-4 border-b border-slate-200 pb-2">
+              <div className="flex space-x-3 sm:space-x-4 mb-3 sm:mb-4 border-b border-slate-200 pb-1.5 sm:pb-2 overflow-x-auto custom-scrollbar">
                 {fields.find((f) => f.id === activeFieldId)?.type !==
                   "Stamp" && (
                   <>
                     <button
                       onClick={() => setSignMode("draw")}
-                      className={`pb-2 text-sm font-medium transition-colors ${signMode === "draw" ? "text-blue-600 border-b-2 border-blue-600" : "text-slate-500 hover:text-slate-900"}`}
+                      className={`pb-1.5 sm:pb-2 text-[13px] sm:text-sm whitespace-nowrap font-medium transition-colors ${signMode === "draw" ? "text-blue-600 border-b-2 border-blue-600" : "text-slate-500 hover:text-slate-900 border-b-2 border-transparent"}`}
                     >
                       Draw
                     </button>
                     <button
                       onClick={() => setSignMode("type")}
-                      className={`pb-2 text-sm font-medium transition-colors ${signMode === "type" ? "text-blue-600 border-b-2 border-blue-600" : "text-slate-500 hover:text-slate-900"}`}
+                      className={`pb-1.5 sm:pb-2 text-[13px] sm:text-sm whitespace-nowrap font-medium transition-colors ${signMode === "type" ? "text-blue-600 border-b-2 border-blue-600" : "text-slate-500 hover:text-slate-900 border-b-2 border-transparent"}`}
                     >
                       Type
                     </button>
@@ -1089,7 +1110,7 @@ export default function Sign() {
 
                 <button
                   onClick={() => setSignMode("upload")}
-                  className={`pb-2 text-sm font-medium transition-colors ${signMode === "upload" ? "text-blue-600 border-b-2 border-blue-600" : "text-slate-500 hover:text-slate-900"}`}
+                  className={`pb-1.5 sm:pb-2 text-[13px] sm:text-sm whitespace-nowrap font-medium transition-colors ${signMode === "upload" ? "text-blue-600 border-b-2 border-blue-600" : "text-slate-500 hover:text-slate-900 border-b-2 border-transparent"}`}
                 >
                   Upload
                 </button>
@@ -1097,7 +1118,7 @@ export default function Sign() {
                 {savedSignatures.length > 0 && (
                   <button
                     onClick={() => setSignMode("saved")}
-                    className={`pb-2 text-sm font-medium transition-colors ${signMode === "saved" ? "text-blue-600 border-b-2 border-blue-600" : "text-slate-500 hover:text-slate-900"}`}
+                    className={`pb-1.5 sm:pb-2 text-[13px] sm:text-sm whitespace-nowrap font-medium transition-colors ${signMode === "saved" ? "text-blue-600 border-b-2 border-blue-600" : "text-slate-500 hover:text-slate-900 border-b-2 border-transparent"}`}
                   >
                     Saved
                   </button>
@@ -1573,10 +1594,10 @@ export default function Sign() {
               <button
                 onClick={handleAdoptSignature}
                 disabled={isAdopting}
-                className="w-full py-3 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm flex items-center justify-center disabled:opacity-70"
+                className="w-full py-2.5 sm:py-3 px-4 bg-blue-600 text-white text-[15px] sm:text-base font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm flex items-center justify-center disabled:opacity-70"
               >
                 {isAdopting && (
-                  <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                  <Loader2 className="animate-spin h-4 w-4 mr-1.5 sm:mr-2" />
                 )}
                 {isAdopting ? "Processing..." : "Adopt and Sign"}
               </button>
