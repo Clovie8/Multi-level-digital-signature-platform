@@ -1014,15 +1014,14 @@ function TemplateTableRow({ template, isChecked, onCheck, setContextMenu, isUsin
             <p className="hidden md:block text-xs text-slate-400 mt-0.5 truncate">
               {template.signerCount} signer{template.signerCount !== 1 ? 's' : ''} · Used {template.usageCount}×
             </p>
-            <p className="md:hidden text-[11px] text-slate-400 mt-0.5 truncate">
-              Used {template.usageCount}×
-            </p>
             <div className="md:hidden flex flex-wrap items-center gap-1.5 mt-1.5">
                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold whitespace-nowrap bg-purple-50 text-purple-700">Template</span>
                <span className="text-[10px] font-medium text-slate-500">
                  {template.signerCount} signer{template.signerCount !== 1 ? 's' : ''}
                </span>
-               <span className="text-[10px] text-slate-400 whitespace-nowrap">{new Date(template.createdAt).toLocaleDateString()}</span>
+               <span className="text-[10px] font-medium text-slate-500">·</span>
+               <span className="text-[10px] text-slate-500 whitespace-nowrap">Used {template.usageCount}×</span>
+               <span className="text-[10px] text-slate-400 whitespace-nowrap ml-auto">{new Date(template.createdAt).toLocaleDateString()}</span>
             </div>
           </div>
         </div>
