@@ -2,7 +2,7 @@ import MoveModal from '../../components/folders/MoveModal';
 import ShareModal from '../../components/folders/ShareModal';
 import ContextMenu from '../../components/folders/ContextMenu';
 import { useAsyncLock } from '../../hooks/useAsyncLock';
-import { DndContext, useDraggable, useDroppable,  MouseSensor, TouchSensor, useSensor, useSensors, KeyboardSensor } from '@dnd-kit/core';
+import { DndContext, useDraggable, useDroppable, DragOverlay, MouseSensor, TouchSensor, useSensor, useSensors, KeyboardSensor } from '@dnd-kit/core';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
@@ -28,6 +28,25 @@ const generateInitials = (name) => {
     ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
     : name.substring(0, 2).toUpperCase();
 };
+
+function Checkbox({ checked, onChange }) {
+  return (
+    <label className="relative flex items-center justify-center cursor-pointer group p-1 -m-1" onClick={e => e.stopPropagation()}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        className="peer sr-only"
+      />
+      <div className="h-4 w-4 sm:h-[18px] sm:w-[18px] rounded border-2 border-slate-300 bg-white group-hover:border-slate-400 peer-focus-visible:ring-2 peer-focus-visible:ring-slate-900 peer-focus-visible:ring-offset-1 transition-all
+        peer-checked:bg-slate-900 peer-checked:border-slate-900 peer-checked:group-hover:bg-slate-800 peer-checked:group-hover:border-slate-800 flex items-center justify-center">
+        <svg viewBox="0 0 14 14" fill="none" className={`w-3 h-3 sm:w-3.5 sm:h-3.5 text-white transition-transform duration-200 ${checked ? 'scale-100' : 'scale-0'}`}>
+          <path d="M3 7.5L5.5 10L11 4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </div>
+    </label>
+  );
+}
 
 function ConfirmModal({ isOpen, title, message, confirmText, isDanger, onConfirm, onCancel, isProcessing = false }) {
   if (!isOpen) return null;
@@ -453,22 +472,20 @@ function DocumentTableRow({ document, currentUser, isChecked, onCheck, onOpen, o
     <tr ref={setNodeRef} {...attributes} {...listeners} onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, item: { ...document, type: 'document' } }); }} onClick={() => onOpen(document.id)} className={`${isDragging ? 'opacity-50' : ''} cursor-pointer border-b border-slate-100 last:border-b-0 transition-colors ${isDeclined ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-slate-50'
         }`}
     >
-      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-        <input
-          type="checkbox"
+      <td className="px-2 md:px-3 py-3 md:py-2" onClick={(e) => e.stopPropagation()}>
+        <Checkbox
           checked={isChecked}
           onChange={() => onCheck(document.id)}
-          className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
         />
       </td>
-      <td className="px-3 py-2">
-        <div className="flex items-center gap-2.5 min-w-0">
+      <td className="px-2 md:px-3 py-3 md:py-2 min-w-0">
+        <div className="flex items-center gap-2 md:gap-2.5 min-w-0">
           <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
             <FileSignature className="h-4 w-4 text-slate-500" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-slate-900 truncate">{document.fileName}</p>
-            <p className="text-xs text-slate-400 mt-0.5 truncate">
+            <p className="text-sm font-semibold text-slate-900 truncate pr-2">{document.fileName}</p>
+            <p className="hidden md:block text-xs text-slate-400 mt-0.5 truncate">
               {isDeclined && document.declinedBy
                 ? <>Declined by <span className="font-medium text-red-600">{document.declinedBy}</span> · step {document.declinedStepOrder} of {document.totalSteps}</>
                 : `${document.totalSteps} signer${document.totalSteps === 1 ? '' : 's'}`}
@@ -478,10 +495,29 @@ function DocumentTableRow({ document, currentUser, isChecked, onCheck, onOpen, o
                 </span>
               )}
             </p>
+            {(isDeclined || document.resumeCount > 0) && (
+              <p className="md:hidden text-[11px] text-slate-400 mt-0.5 truncate">
+                {isDeclined && document.declinedBy && (
+                  <>Declined by <span className="font-medium text-red-600">{document.declinedBy}</span></>
+                )}
+                {document.resumeCount > 0 && (
+                  <span className={isDeclined ? "ml-1 font-medium text-amber-600" : "font-medium text-amber-600"}>
+                    (Declined {document.status === 'declined' ? document.resumeCount + 1 : document.resumeCount}×)
+                  </span>
+                )}
+              </p>
+            )}
+            <div className="md:hidden flex flex-wrap items-center gap-1.5 mt-1.5">
+               <StatusPill status={document.status} />
+               <span className="text-[10px] font-medium text-slate-500">
+                 {document.totalSteps} signer{document.totalSteps === 1 ? '' : 's'}
+               </span>
+               <span className="text-[10px] text-slate-400 whitespace-nowrap">{new Date(document.createdAt).toLocaleDateString()}</span>
+            </div>
           </div>
         </div>
       </td>
-      <td className="px-3 py-2">
+      <td className="hidden md:table-cell px-3 py-2">
         <div className="flex items-center gap-1.5 min-w-0">
           <div className="h-6 w-6 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">
             {generateInitials(document.initiatorName)}
@@ -491,16 +527,16 @@ function DocumentTableRow({ document, currentUser, isChecked, onCheck, onOpen, o
           </span>
         </div>
       </td>
-      <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">
+      <td className="hidden md:table-cell px-3 py-2 text-xs text-slate-500 whitespace-nowrap">
         {new Date(document.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
       </td>
-      <td className="px-3 py-2">
+      <td className="hidden md:table-cell px-3 py-2">
         <ProgressDots document={document} />
       </td>
-      <td className="px-3 py-2 min-w-0">
+      <td className="hidden md:table-cell px-3 py-2 min-w-0">
         <PendingOnCell document={document} currentUser={currentUser} />
       </td>
-      <td className="px-3 py-2">
+      <td className="hidden md:table-cell px-3 py-2">
         <div className="flex flex-col gap-1 items-start">
           <div className="flex items-center gap-1">
             <StatusPill status={document.status} />
@@ -517,8 +553,10 @@ function DocumentTableRow({ document, currentUser, isChecked, onCheck, onOpen, o
           )}
         </div>
       </td>
-      <td className="px-3 py-2">
-        <RowActions document={document} currentUser={currentUser} onView={onOpen} onVoided={onVoided} onContextMenuAction={onContextMenuAction} />
+      <td className="px-2 md:px-3 py-3 md:py-2">
+        <div className="flex justify-end md:justify-start">
+          <RowActions document={document} currentUser={currentUser} onView={onOpen} onVoided={onVoided} onContextMenuAction={onContextMenuAction} />
+        </div>
       </td>
     </tr>
   );
@@ -963,37 +1001,47 @@ function TemplateTableRow({ template, isChecked, onCheck, setContextMenu, isUsin
 
   return (
     <tr ref={setNodeRef} {...attributes} {...listeners} onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, item: { ...template, type: 'template' } }); }} className={`${isDragging ? 'opacity-50' : ''} hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-b-0 transition-colors`}>
-      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-        <input type="checkbox" checked={isChecked} onChange={() => onCheck(template.id)} className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900" />
+      <td className="px-2 md:px-3 py-3 md:py-2" onClick={(e) => e.stopPropagation()}>
+        <Checkbox checked={isChecked} onChange={() => onCheck(template.id)} />
       </td>
-      <td className="px-3 py-2">
-        <div className="flex items-center gap-2.5 min-w-0">
+      <td className="px-2 md:px-3 py-3 md:py-2 min-w-0">
+        <div className="flex items-center gap-2 md:gap-2.5 min-w-0">
           <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
             <LayoutTemplate className="h-4 w-4 text-slate-500" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-slate-900 truncate">{template.name}</p>
-            <p className="text-xs text-slate-400 mt-0.5 truncate">
+            <p className="text-sm font-semibold text-slate-900 truncate pr-2">{template.name}</p>
+            <p className="hidden md:block text-xs text-slate-400 mt-0.5 truncate">
               {template.signerCount} signer{template.signerCount !== 1 ? 's' : ''} · Used {template.usageCount}×
             </p>
+            <p className="md:hidden text-[11px] text-slate-400 mt-0.5 truncate">
+              Used {template.usageCount}×
+            </p>
+            <div className="md:hidden flex flex-wrap items-center gap-1.5 mt-1.5">
+               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold whitespace-nowrap bg-purple-50 text-purple-700">Template</span>
+               <span className="text-[10px] font-medium text-slate-500">
+                 {template.signerCount} signer{template.signerCount !== 1 ? 's' : ''}
+               </span>
+               <span className="text-[10px] text-slate-400 whitespace-nowrap">{new Date(template.createdAt).toLocaleDateString()}</span>
+            </div>
           </div>
         </div>
       </td>
-      <td className="px-3 py-2">
+      <td className="hidden md:table-cell px-3 py-2">
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-xs font-semibold text-slate-900 truncate">{template.creatorName || 'Unknown'}</span>
         </div>
       </td>
-      <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">
-        {new Date(template.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+      <td className="hidden md:table-cell px-3 py-2 text-xs text-slate-500 whitespace-nowrap">
+        {new Date(template.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
       </td>
-      <td className="px-3 py-2 text-xs text-slate-400">—</td>
-      <td className="px-3 py-2 text-xs text-slate-400">—</td>
-      <td className="px-3 py-2">
+      <td className="hidden md:table-cell px-3 py-2 text-xs text-slate-400">—</td>
+      <td className="hidden md:table-cell px-3 py-2 text-xs text-slate-400">—</td>
+      <td className="hidden md:table-cell px-3 py-2">
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap bg-purple-50 text-purple-700">Template</span>
       </td>
-      <td className="px-3 py-2">
-        <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+      <td className="px-2 md:px-3 py-3 md:py-2">
+        <div className="flex items-center justify-end md:justify-start gap-2" onClick={(e) => e.stopPropagation()}>
           {isUsing ? (
             <div className="h-8 w-8 flex items-center justify-center">
               <Loader2 className="h-5 w-5 text-slate-900 animate-spin" />
@@ -1035,27 +1083,27 @@ function FolderTableRow({ folder, onOpen, setContextMenu }) {
 
   return (
     <tr ref={setRefs} {...attributes} {...listeners} onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, item: { ...folder, type: 'folder' } }); }} onDoubleClick={() => onOpen(folder)} className={`hover:bg-slate-50/80 cursor-pointer transition-colors ${isDragging ? 'opacity-50' : ''} ${isOver ? 'bg-indigo-50 border-indigo-200 ring-2 ring-indigo-500 z-10' : ''}`}>
-      <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+      <td className="px-2 md:px-3 py-3" onClick={(e) => e.stopPropagation()}>
         {/* Empty Checkbox Column */}
       </td>
-      <td className="px-3 py-3">
-        <div className="flex items-center gap-3" onPointerDown={(e) => { e.stopPropagation(); onOpen(folder); }}>
-          <div className="flex-shrink-0 h-10 w-10 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600">
-            <Folder className="h-5 w-5" />
+      <td className="px-2 md:px-3 py-3 min-w-0">
+        <div className="flex items-center gap-2 md:gap-3 min-w-0" onPointerDown={(e) => { e.stopPropagation(); onOpen(folder); }}>
+          <div className="flex-shrink-0 h-8 w-8 md:h-10 md:w-10 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600">
+            <Folder className="h-4 w-4 md:h-5 md:w-5" />
           </div>
-          <div>
-            <div className="font-medium text-sm text-slate-900">{folder.name}</div>
-            <div className="text-xs text-slate-500">Folder</div>
+          <div className="min-w-0">
+            <div className="font-semibold md:font-medium text-sm text-slate-900 truncate pr-2">{folder.name}</div>
+            <div className="text-[11px] md:text-xs text-slate-500">Folder</div>
           </div>
         </div>
       </td>
-      <td className="px-3 py-3 text-sm text-slate-500"></td>
-      <td className="px-3 py-3 text-sm text-slate-500"></td>
-      <td className="px-3 py-3 text-sm text-slate-500"></td>
-      <td className="px-3 py-3 text-sm text-slate-500"></td>
-      <td className="px-3 py-3 text-sm text-slate-500"></td>
-      <td className="px-3 py-3">
-        <div className="flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
+      <td className="hidden md:table-cell px-3 py-3 text-sm text-slate-500"></td>
+      <td className="hidden md:table-cell px-3 py-3 text-sm text-slate-500"></td>
+      <td className="hidden md:table-cell px-3 py-3 text-sm text-slate-500"></td>
+      <td className="hidden md:table-cell px-3 py-3 text-sm text-slate-500"></td>
+      <td className="hidden md:table-cell px-3 py-3 text-sm text-slate-500"></td>
+      <td className="px-2 md:px-3 py-3">
+        <div className="flex items-center justify-end md:justify-start" onClick={(e) => e.stopPropagation()}>
           <button
             onClick={(e) => {
               e.preventDefault();
@@ -1231,8 +1279,8 @@ export default function Documents() {
   const [selectedItemsForMove, setSelectedItemsForMove] = useState([]);
   const [contextMenu, setContextMenu] = useState(null);
 
-  const [setActiveDragItem] = useState(null);
-  const [setIsDraggingSelection] = useState(false);
+  const [activeDragItem, setActiveDragItem] = useState(null);
+  const [isDraggingSelection, setIsDraggingSelection] = useState(false);
 
   
   
@@ -1612,7 +1660,7 @@ export default function Documents() {
 
   return (
     <div className="min-h-full bg-white">
-      <div className="max-w-[1400px] mx-auto px-6 py-8">
+      <div className="max-w-[1400px] mx-auto px-2 sm:px-6 py-6 sm:py-8">
         <div className="flex items-end justify-between gap-4 flex-wrap mb-6">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">Document tracking</p>
@@ -1653,7 +1701,7 @@ export default function Documents() {
           </div>
         </div>
 
-        <div className="flex gap-6 border-b border-slate-200 mb-5">
+        <div className="flex gap-4 sm:gap-6 border-b border-slate-200 mb-5 overflow-x-auto whitespace-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           {TABS.map((tab) => {
             const count = tab.key === 'all'
               ? currentFolderDocs.length
@@ -1680,30 +1728,30 @@ export default function Documents() {
 
         
         {activeTab !== 'needs_decision' && (
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <button onClick={() => setCurrentFolderId(null)} className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${!currentFolderId ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}><HomeIcon className="h-4 w-4" /> Root</button>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-4">
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+              <button onClick={() => setCurrentFolderId(null)} className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-md text-[11px] sm:text-sm font-medium transition-colors ${!currentFolderId ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}><HomeIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> Root</button>
               {breadcrumbs.map((crumb, index) => (
                 <React.Fragment key={crumb.id}>
-                  <span className="text-slate-400">/</span>
+                  <span className="text-slate-400 text-xs">/</span>
                   <button 
                     onClick={() => setCurrentFolderId(crumb.id)} 
-                    className={`flex items-center gap-0.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${index === breadcrumbs.length - 1 ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                    className={`flex items-center gap-0.5 px-2.5 sm:px-3 py-1.5 rounded-md text-[11px] sm:text-sm font-medium transition-colors ${index === breadcrumbs.length - 1 ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                   >
-                    <Folder className="h-4 w-4" />
+                    <Folder className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     {crumb.name}
                   </button>
                 </React.Fragment>
               ))}
             </div>
-            <button onClick={() => setIsCreateFolderModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors text-sm font-medium">
+            <button onClick={() => setIsCreateFolderModalOpen(true)} className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors text-xs sm:text-sm font-medium w-full sm:w-auto shadow-sm">
               <Folder className="h-4 w-4" /> New Folder
             </button>
           </div>
         )}
 
-        <div className="flex gap-3 mb-4 flex-wrap items-center">
-          <div className="relative flex-1 min-w-[200px] max-w-xs">
+        <div className="flex flex-col sm:flex-row gap-3 mb-4 items-stretch sm:items-center">
+          <div className="relative flex-1 min-w-[200px] sm:max-w-xs">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
             <input
               value={searchQuery}
@@ -1720,7 +1768,7 @@ export default function Documents() {
                 value: s,
                 label: s === 'all' ? 'Status: All' : STATUS_META[s].label
               }))}
-              className="w-48"
+              className="w-full sm:w-48"
             />
           )}
         </div>
@@ -1745,7 +1793,7 @@ export default function Documents() {
         )}
 
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
+        <div className="bg-white rounded-md border border-slate-200 shadow-sm">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-16 text-slate-400">
               <Clock className="h-6 w-6 mb-2 animate-pulse" />
@@ -1765,33 +1813,21 @@ export default function Documents() {
             <>
             <div className="overflow-visible min-h-[250px]">
               <table className="w-full text-left table-fixed">
-                <colgroup>
-                  <col style={{ width: '3%' }} />
-                  <col style={{ width: '28%' }} />
-                  <col style={{ width: '13%' }} />
-                  <col style={{ width: '12%' }} />
-                  <col style={{ width: '9%' }} />
-                  <col style={{ width: '13%' }} />
-                  <col style={{ width: '16%' }} />
-                  <col style={{ width: '5%' }} />
-                </colgroup>
                 <thead>
                   <tr className="border-b border-slate-200">
-                    <th className="px-3 py-1.5">
-                      <input
-                        type="checkbox"
+                    <th className="w-10 md:w-[3%] px-2 md:px-3 py-1.5">
+                      <Checkbox
                         checked={checkedIds.size > 0 && checkedIds.size === (activeTab === 'templates' ? filteredTemplates.length : filteredDocuments.length)}
                         onChange={toggleCheckAll}
-                        className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
                       />
                     </th>
-                    <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">{activeTab === 'templates' ? 'Template' : 'Document'}</th>
-                    <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Initiator</th>
-                    <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Date</th>
-                    <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Progress</th>
-                    <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Pending on</th>
-                    <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Status</th>
-                    <th className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Action</th>
+                    <th className="w-auto md:w-[28%] px-2 md:px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">{activeTab === 'templates' ? 'Template' : 'Document'}</th>
+                    <th className="hidden md:table-cell w-[13%] px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Initiator</th>
+                    <th className="hidden md:table-cell w-[12%] px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Date</th>
+                    <th className="hidden md:table-cell w-[9%] px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Progress</th>
+                    <th className="hidden md:table-cell w-[13%] px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Pending on</th>
+                    <th className="hidden md:table-cell w-[16%] px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Status</th>
+                    <th className="w-12 md:w-[5%] px-2 md:px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400 text-right md:text-left">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1838,9 +1874,9 @@ export default function Documents() {
               </table>
             </div>
           
-            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-500">Show</span>
+            <div className="flex items-center justify-between px-2 sm:px-4 py-3 border-t border-slate-200 gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <span className="hidden sm:inline text-sm text-slate-500">Show</span>
                 <Select
                   value={itemsPerPage}
                   onChange={(val) => {
@@ -1852,25 +1888,26 @@ export default function Documents() {
                     { value: 50, label: '50' },
                     { value: 100, label: '100' }
                   ]}
-                  className="w-20"
+                  className="w-16 sm:w-20 text-[11px] sm:text-sm"
                 />
-                <span className="text-sm text-slate-500">entries</span>
+                <span className="text-[10px] sm:text-sm text-slate-500">entries</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2">
                 <button
                   onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
                   disabled={currentPage === 1}
-                  className="px-3 py-1 text-sm font-medium text-slate-600 bg-slate-50 rounded-md border border-slate-200 hover:bg-slate-100 disabled:opacity-50 transition-colors"
+                  className="px-2 sm:px-3 py-1.5 sm:py-1 text-[10px] sm:text-sm font-medium text-slate-600 bg-slate-50 rounded border border-slate-200 hover:bg-slate-100 disabled:opacity-50 transition-colors"
                 >
-                  Previous
+                  <span className="sm:hidden">Prev</span>
+                  <span className="hidden sm:inline">Previous</span>
                 </button>
-                <span className="text-sm font-medium text-slate-700">
-                  Page {currentPage} of {totalPages || 1}
+                <span className="text-[10px] sm:text-sm font-medium text-slate-700 mx-0.5 sm:mx-2 whitespace-nowrap">
+                  <span className="hidden sm:inline">Page </span>{currentPage} / {totalPages || 1}
                 </span>
                 <button
                   onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
                   disabled={currentPage === totalPages || totalPages === 0}
-                  className="px-3 py-1 text-sm font-medium text-slate-600 bg-slate-50 rounded-md border border-slate-200 hover:bg-slate-100 disabled:opacity-50 transition-colors"
+                  className="px-2 sm:px-3 py-1.5 sm:py-1 text-[10px] sm:text-sm font-medium text-slate-600 bg-slate-50 rounded border border-slate-200 hover:bg-slate-100 disabled:opacity-50 transition-colors"
                 >
                   Next
                 </button>
@@ -1880,6 +1917,29 @@ export default function Documents() {
 
           )}
         </div>
+          <DragOverlay>
+            {activeDragItem ? (
+              <div className="bg-white border border-indigo-300 shadow-xl rounded-lg px-4 py-3 flex items-center gap-3 opacity-90 rotate-2 w-72">
+                {activeDragItem.type === 'folder' ? (
+                  <Folder className="h-5 w-5 text-indigo-500" />
+                ) : activeDragItem.type === 'template' ? (
+                  <LayoutTemplate className="h-5 w-5 text-indigo-500" />
+                ) : (
+                  <FileSignature className="h-5 w-5 text-indigo-500" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-slate-900 truncate">
+                    {activeDragItem.item.name || activeDragItem.item.fileName}
+                  </p>
+                  {isDraggingSelection && checkedIds.size > 1 && (
+                    <p className="text-xs font-medium text-indigo-600">
+                      Moving {checkedIds.size} items
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </DragOverlay>
         </DndContext>
       </div>
 

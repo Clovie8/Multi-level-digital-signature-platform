@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, useNavigate, useLocation, useOutletContext, Link } from 'react-router-dom';
-import { PenTool, Menu, X, Home, FileSignature, Settings, LogOut, User, ChevronDown, ChevronLeft, ChevronRight, UploadCloud, ShieldCheck, ScrollText, FolderOpen, Clock, Layers } from 'lucide-react';
+import { Menu, X, Home, Settings, LogOut, User, ChevronDown, ChevronLeft, ChevronRight, UploadCloud, ShieldCheck, ScrollText, FolderOpen, Clock, Layers } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
 
@@ -227,7 +227,7 @@ export default function Layout() {
             >
               <Menu className="h-6 w-6" />
             </button>
-            <h1 className="text-lg font-semibold text-slate-900 truncate">
+            <h1 className="text-sm sm:text-lg font-semibold text-slate-900 truncate max-w-[200px] sm:max-w-xs md:max-w-md lg:max-w-xl">
               {getPageTitle()}
             </h1>
           </div>

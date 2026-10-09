@@ -4,12 +4,11 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import {
-  UploadCloud, Users, FileSignature, CheckCircle, Plus, Trash2,
+  UploadCloud, FileSignature, Plus, Trash2,
   ArrowRight, PenTool, Calendar, Type, UserSquare, ChevronLeft, ChevronRight, Search, Send, X, LayoutTemplate, Pencil, Check, Stamp, Copy, Loader2, Folder
 } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Rnd } from 'react-rnd';
-import Select from 'react-select';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -20,19 +19,6 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 
 // --- TOP-LEVEL COMPONENTS (moved out of Upload to avoid remounting on every render) ---
 
-const StepIcon = ({ stepNumber, current, icon: Icon, title }) => {
-  const isActive = current === stepNumber;
-  const isPast = current > stepNumber;
-  return (
-    <div className={`flex flex-col items-center ${isActive ? 'opacity-100' : 'opacity-40'}`}>
-      <div className={`h-10 w-10 rounded-full flex items-center justify-center mb-2 transition-colors ${isActive ? 'bg-slate-900 text-white shadow-md' : isPast ? 'bg-green-500 text-white' : 'bg-slate-200 text-slate-500'
-        }`}>
-        {isPast ? <CheckCircle className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
-      </div>
-      <span className={`text-xs font-medium ${isActive ? 'text-slate-900' : 'text-slate-500'}`}>{title}</span>
-    </div>
-  );
-};
 
 const DraggableField = ({ icon: Icon, label, type, activeColorClasses, onDragStart }) => (
   <div
@@ -46,26 +32,6 @@ const DraggableField = ({ icon: Icon, label, type, activeColorClasses, onDragSta
 );
 
 // Styling for the template picker to match the slate/white theme used everywhere else
-const templateSelectStyles = {
-  control: (base, state) => ({
-    ...base,
-    minHeight: '46px',
-    borderRadius: '0.5rem',
-    borderColor: state.isFocused ? '#0f172a' : '#e2e8f0',
-    boxShadow: state.isFocused ? '0 0 0 1px #0f172a' : 'none',
-    '&:hover': { borderColor: '#94a3b8' }
-  }),
-  option: (base, state) => ({
-    ...base,
-    backgroundColor: state.isSelected ? '#0f172a' : state.isFocused ? '#f1f5f9' : 'white',
-    color: state.isSelected ? '#ffffff' : '#0f172a',
-    cursor: 'pointer',
-    padding: '10px 12px'
-  }),
-  placeholder: (base) => ({ ...base, color: '#94a3b8', fontSize: '0.875rem' }),
-  singleValue: (base) => ({ ...base, fontSize: '0.875rem' }),
-  menu: (base) => ({ ...base, borderRadius: '0.5rem', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' })
-};
 
 function TemplateBrowserModal({ folders, templates, onClose, onSelect }) {
   const [currentFolderId, setCurrentFolderId] = useState(null);
@@ -196,10 +162,120 @@ function TemplateBrowserModal({ folders, templates, onClose, onSelect }) {
   );
 }
 
+function FolderBrowserModal({ folders, onClose, onSelect }) {
+  const [currentFolderId, setCurrentFolderId] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
+
+  const currentFolders = folders.filter(f => f.type !== 'template' && (f.parent_folder_id || null) === currentFolderId);
+
+  const getBreadcrumbs = () => {
+    const crumbs = [{ id: null, name: 'Root' }];
+    let curr = currentFolderId;
+    const path = [];
+    while (curr) {
+      const f = folders.find(folder => folder.id === curr);
+      if (f) {
+        path.unshift({ id: f.id, name: f.name });
+        curr = f.parent_folder_id || f.parentId || f.parent_id;
+      } else {
+        break;
+      }
+    }
+    return [...crumbs, ...path];
+  };
+
+  const breadcrumbs = getBreadcrumbs();
+  const currentFolderName = breadcrumbs[breadcrumbs.length - 1].name;
+
+  // Sync selectedId when currentFolderId changes to allow saving in the current folder quickly
+  useEffect(() => {
+    setSelectedId(currentFolderId);
+  }, [currentFolderId]);
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-slate-900/50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl h-[500px] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+        {/* Header & Breadcrumbs */}
+        <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col gap-3 shrink-0">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+              <Folder className="h-5 w-5 text-blue-600" />
+              Select Destination Folder
+            </h2>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-700 transition-colors">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          
+          <div className="flex items-center flex-wrap gap-2 text-sm font-medium">
+            {breadcrumbs.map((crumb, idx) => (
+              <div key={crumb.id || 'root'} className="flex items-center gap-2">
+                {idx > 0 && <ChevronRight className="h-4 w-4 text-slate-400" />}
+                <button
+                  onClick={() => setCurrentFolderId(crumb.id)}
+                  className={`hover:text-blue-600 transition-colors ${idx === breadcrumbs.length - 1 ? 'text-slate-900' : 'text-slate-500'}`}
+                >
+                  {crumb.name}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Directory View */}
+        <div className="flex-grow overflow-y-auto p-6 bg-white custom-scrollbar">
+          {currentFolders.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-slate-400">
+              <Folder className="h-12 w-12 mb-3 opacity-20" />
+              <p>This folder is empty.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {currentFolders.map(folder => (
+                <button
+                  key={folder.id}
+                  onClick={() => setCurrentFolderId(folder.id)}
+                  className="flex items-center gap-3 p-3 text-left border border-slate-200 rounded-lg hover:border-blue-400 hover:shadow-sm hover:bg-blue-50/30 transition-all group"
+                >
+                  <Folder className="h-6 w-6 text-slate-400 group-hover:text-blue-500 transition-colors flex-shrink-0" />
+                  <span className="font-medium text-sm text-slate-700 group-hover:text-slate-900 truncate">{folder.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer Actions */}
+        <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+          <div className="text-sm font-medium text-slate-700">
+            Current Selection: <span className="text-blue-600">{currentFolderName}</span>
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-md transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                onSelect(selectedId);
+                onClose();
+              }}
+              className="px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+            >
+              Save Here
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Upload() {
   const [currentStep, setCurrentStep] = useState(1);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [isLoading] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const editDocumentId = searchParams.get('edit');
@@ -230,9 +306,10 @@ export default function Upload() {
   // Upload Step Mode: 'new' PDF upload vs starting from a saved 'template'
   const [uploadMode, setUploadMode] = useState('new');
   const [templates, setTemplates] = useState([]);
-  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [setTemplatesLoading] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
 
   const [folders, setFolders] = useState([]);
   const [selectedFolderId, setSelectedFolderId] = useState(null);
@@ -246,17 +323,6 @@ export default function Upload() {
     }
     return path.join(' / ');
   };
-
-  const folderOptions = [
-    { value: null, label: 'Root (No folder)' },
-    ...folders
-      .filter(f => f.type !== 'template')
-      .map(f => ({ value: f.id, label: getFolderPath(f) }))
-  ].sort((a, b) => {
-    if (a.value === null) return -1;
-    if (b.value === null) return 1;
-    return a.label.localeCompare(b.label);
-  });
 
   // Flag set at upload time; the actual template is saved right before dispatch,
   // once fields + signer roles are finalized (a raw upload alone has neither).
@@ -369,9 +435,11 @@ export default function Upload() {
     }
   }, [editDocumentId]);
 
+  const isDispatchedRef = useRef(false);
+
   // Auto-save to cache whenever state changes
   useEffect(() => {
-    if (!documentId) return; 
+    if (!documentId || isDispatchedRef.current) return; 
     
     const stateToCache = {
       documentId,
@@ -386,7 +454,10 @@ export default function Upload() {
 
 
   // UX State
-  const [selectedFieldId, setSelectedFieldId] = useState(null);
+  const [selectedFieldIds, setSelectedFieldIds] = useState([]);
+  const hasDraggedRef = useRef(false);
+  const dragStartPositionsRef = useRef({});
+  const dragStartMouseRef = useRef({ x: 0, y: 0 });
   const [dragGuides, setDragGuides] = useState({ horizontal: null, vertical: null });
   const [isSignerDropdownOpen, setIsSignerDropdownOpen] = useState(false);
 
@@ -496,7 +567,7 @@ export default function Upload() {
   });
   
 
-   const [handleUseTemplateSubmit, isUsingTemplate] = useAsyncLock(async () => {
+   const [handleUseTemplateSubmit] = useAsyncLock(async () => {
     if (!selectedTemplateId) return toast.error('Please select a template first.');
 
     try {
@@ -507,7 +578,7 @@ export default function Upload() {
       setExistingFile({ url: newDoc.fileUrl, fileName: newDoc.fileName });
       setFile(null);
 
-      if (templateSigners?.length) setSigners(templateSigners);
+      if (templateSigners?.length) setSigners(templateSigners.map(s => ({ ...s, isDraft: !s.name || !s.email })));
       if (templateFields?.length) setFields(templateFields);
 
       toast.success(`Started from "${newDoc.templateName || 'template'}".`);
@@ -538,11 +609,26 @@ export default function Upload() {
     'bg-emerald-100 text-emerald-700 border-emerald-200',
     'bg-purple-100 text-purple-700 border-purple-200',
     'bg-amber-100 text-amber-700 border-amber-200',
-    'bg-rose-100 text-rose-700 border-rose-200'
+    'bg-rose-100 text-rose-700 border-rose-200',
+    'bg-teal-100 text-teal-700 border-teal-200',
+    'bg-indigo-100 text-indigo-700 border-indigo-200',
+    'bg-orange-100 text-orange-700 border-orange-200',
+    'bg-pink-100 text-pink-700 border-pink-200',
+    'bg-cyan-100 text-cyan-700 border-cyan-200',
+    'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200',
+    'bg-lime-100 text-lime-700 border-lime-200',
+    'bg-violet-100 text-violet-700 border-violet-200',
+    'bg-sky-100 text-sky-700 border-sky-200',
+    'bg-red-100 text-red-700 border-red-200',
+    'bg-yellow-100 text-yellow-700 border-yellow-200',
+    'bg-green-100 text-green-700 border-green-200',
+    'bg-slate-100 text-slate-700 border-slate-200',
+    'bg-stone-100 text-stone-700 border-stone-200',
+    'bg-zinc-100 text-zinc-700 border-zinc-200'
   ];
 
   const addSigner = () => {
-    if (signers.length >= 5) return toast.error('Maximum 5 signers allowed for standard routing.');
+    if (signers.length >= 20) return toast.error('Maximum 20 signers allowed for standard routing.');
     const newIndex = signers.length;
     const newId = newIndex + 1;
     setSigners([...signers, {
@@ -551,7 +637,8 @@ export default function Upload() {
       email: '',
       role: `Level ${newId} Signer`,
       color: signerColors[newIndex],
-      receivesFinalCopy: true
+      receivesFinalCopy: true,
+      isDraft: true
     }]);
     setEditingSignerId(newId);
   };
@@ -613,7 +700,14 @@ export default function Upload() {
 
       await api.patch(`/api/documents/${documentId}/draft-config`, { signers: finalSigners, fields, isInitiatorFirst, initiatorReceivesFinalCopy, currentStep, dueDate });
       toast.success('Saved as draft.');
+      isDispatchedRef.current = true;
       localStorage.removeItem('upload_draft_state');
+      setDocumentId(null);
+      setCurrentStep(1);
+      setFile(null);
+      setExistingFile(null);
+      setFields([]);
+      setSigners([{ id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200', receivesFinalCopy: true }]);
       navigate('/documents');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not save this draft.');
@@ -668,7 +762,14 @@ export default function Upload() {
       });
 
       toast.success(res.data.message);
+      isDispatchedRef.current = true;
       localStorage.removeItem('upload_draft_state');
+      setDocumentId(null);
+      setCurrentStep(1);
+      setFile(null);
+      setExistingFile(null);
+      setFields([]);
+      setSigners([{ id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200', receivesFinalCopy: true }]);
 
       if (res.data.isInitiatorFirst && res.data.redirectToken) {
         // Path A: Redirect instantly to signing canvas
@@ -681,7 +782,6 @@ export default function Upload() {
         setFields([]);
         setSigners([{ id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200', receivesFinalCopy: true }]);
         setSaveAsTemplate(false);
-        setTemplateName('');
       }
     } catch (error) {
       console.error(error);
@@ -744,7 +844,7 @@ export default function Upload() {
       setFields([...fields, ...newFields]);
       
       const currentField = newFields.find(f => f.page === pageIndex);
-      if (currentField) setSelectedFieldId(currentField.id);
+      if (currentField) setSelectedFieldIds([currentField.id]);
       toast.success('Initial placed on all pages.');
     } else {
 
@@ -775,7 +875,7 @@ export default function Upload() {
       };
 
       setFields([...fields, newField]);
-      setSelectedFieldId(newField.id); 
+      setSelectedFieldIds([newField.id]); 
     }
   };
 
@@ -868,6 +968,14 @@ export default function Upload() {
         />
       )}
 
+      {isFolderModalOpen && (
+        <FolderBrowserModal
+          folders={folders}
+          onClose={() => setIsFolderModalOpen(false)}
+          onSelect={setSelectedFolderId}
+        />
+      )}
+
       <main className={`mx-auto mt-8 px-4 sm:px-6 transition-all duration-500 ${currentStep === 2 ? 'w-full max-w-[1400px]' : 'max-w-4xl'}`}>
 
         {/* STEP 1 UI: UPLOAD */}
@@ -945,16 +1053,16 @@ export default function Upload() {
                         <p className="text-[11px] text-slate-500 mt-0.5">Where should this document be saved?</p>
                       </div>
                     </div>
-                    <div className="w-full sm:w-72">
-                      <Select
-                        options={folderOptions}
-                        value={folderOptions.find(o => o.value === selectedFolderId) || folderOptions[0]}
-                        onChange={(option) => setSelectedFolderId(option ? option.value : null)}
-                        placeholder="Select a folder..."
-                        isSearchable
-                        styles={templateSelectStyles}
-                        maxMenuHeight={180}
-                      />
+                    <div className="w-full sm:w-72 flex justify-end">
+                      <button
+                        onClick={() => setIsFolderModalOpen(true)}
+                        className="flex items-center justify-between w-full px-4 py-2.5 text-sm bg-white border border-slate-300 rounded-lg hover:border-blue-400 hover:ring-1 hover:ring-blue-400 transition-all text-left shadow-sm group"
+                      >
+                        <span className="truncate mr-3 font-medium text-slate-700 group-hover:text-blue-700">
+                          {selectedFolderId ? getFolderPath(folders.find(f => f.id === selectedFolderId)) : 'Root (No folder)'}
+                        </span>
+                        <Folder className="h-4 w-4 text-slate-400 flex-shrink-0 group-hover:text-blue-500" />
+                      </button>
                     </div>
                   </div>
 
@@ -1086,7 +1194,7 @@ export default function Upload() {
 
                 <div className="space-y-2">
                   {signers.map((signer, index) => {
-                    const isEditing = editingSignerId === signer.id || (!signer.name && !signer.email);
+                    const isEditing = editingSignerId === signer.id || signer.isDraft;
                     return (
                     <div key={signer.id} className={`p-2 border rounded shadow-sm relative transition-colors ${activeSignerId === signer.id ? 'bg-white border-blue-400 ring-1 ring-blue-400' : 'bg-white border-slate-200'}`} onClick={() => setActiveSignerId(signer.id)}>
                       <div className="flex items-center justify-between mb-2">
@@ -1191,6 +1299,11 @@ export default function Upload() {
                                   toast.error(err);
                                 } else {
                                   setEditingSignerId(null); 
+                                  if (signer.isDraft) {
+                                    const updated = [...signers];
+                                    updated[index].isDraft = false;
+                                    setSigners(updated);
+                                  }
                                 }
                               }} 
                               className="text-[10px] text-blue-600 font-medium bg-blue-50 px-2.5 py-1 rounded hover:bg-blue-100 transition-colors"
@@ -1320,10 +1433,72 @@ export default function Upload() {
                           {/* The Actual Canvas Area */}
               <div
                 ref={pdfContainerRef}
-                className="flex-1 overflow-auto p-4 md:p-8 bg-slate-200/50"
-                onClick={() => setSelectedFieldId(null)}
+                className="flex-1 overflow-auto p-4 md:p-8 bg-slate-200/50 relative"
+                onClick={() => setSelectedFieldIds([])}
                 onScroll={handleScroll}
               >
+                  {/* Bulk Toolbar - moved here for sticky positioning to work properly! */}
+                  {selectedFieldIds.length > 1 && (
+                    <div 
+                      className="sticky top-4 mx-auto w-max mb-4 bg-slate-900 border border-slate-800 rounded-lg shadow-2xl flex items-center h-12 px-2 gap-2 z-[100] pointer-events-auto"
+                      onClick={(e) => e.stopPropagation()} 
+                      onMouseDown={(e) => e.stopPropagation()}
+                    >
+                      <span className="text-xs font-semibold text-white ml-2 mr-2">
+                        {selectedFieldIds.length} items selected
+                      </span>
+                      
+                      <div className="h-6 w-px bg-slate-700 mx-1"></div>
+                      
+                      <select
+                        onChange={(e) => {
+                          const newSignerId = Number(e.target.value);
+                          setFields(prev => prev.map(f => selectedFieldIds.includes(f.id) ? { ...f, signerId: newSignerId } : f));
+                        }}
+                        className="text-xs font-medium text-white bg-slate-800 hover:bg-slate-700 py-1.5 px-3 rounded outline-none cursor-pointer border border-slate-700"
+                        value=""
+                      >
+                        <option value="" disabled>Assign to...</option>
+                        {signers.map(s => (
+                          <option key={s.id} value={s.id}>{s.name || s.role}</option>
+                        ))}
+                      </select>
+                      
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const newFields = [];
+                          const newSelectedIds = [];
+                          
+                          const offsetBase = 20;
+                          
+                          fields.filter(f => selectedFieldIds.includes(f.id)).forEach((f, idx) => {
+                            const newId = `field_${Date.now()}_${idx}`;
+                            newFields.push({ ...f, id: newId, x: f.x + offsetBase, y: f.y + offsetBase, xPct: f.xPct + 2, yPct: f.yPct + 2 });
+                            newSelectedIds.push(newId);
+                          });
+                          
+                          setFields(prev => [...prev, ...newFields]);
+                          setSelectedFieldIds(newSelectedIds);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 rounded transition-colors ml-1"
+                      >
+                        <Copy className="h-4 w-4" /> Duplicate All
+                      </button>
+                      
+                      <button 
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          setFields(prev => prev.filter(f => !selectedFieldIds.includes(f.id))); 
+                          setSelectedFieldIds([]); 
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 rounded transition-colors border-l border-slate-700 ml-1"
+                      >
+                        <Trash2 className="h-4 w-4" /> Delete All
+                      </button>
+                    </div>
+                  )}
+
                 {/* 
                   Wrapper div strictly matches the scaled width. 
                   This ensures mx-auto centers it flawlessly without flex layout bugs or clipping!
@@ -1336,6 +1511,7 @@ export default function Upload() {
                     }} 
                     className="w-[750px] flex flex-col"
                   >
+
                   {canvasFileSource ? (
                     <Document
                       file={canvasFileSource}
@@ -1364,14 +1540,11 @@ export default function Upload() {
                             {/* Render Placed Fields for Current Page */}
                             {fields.filter(f => f.page === pageIndex).map((field) => {
                               const signer = signers.find(s => s.id === field.signerId);
-                              const isSelected = selectedFieldId === field.id;
+                              const isSelected = selectedFieldIds.includes(field.id);
                               const baseColor = signer ? signer.color : 'bg-slate-100 text-slate-700 border-slate-200';
                               const bgColor = isSelected ? baseColor.split(' ')[0].replace('-100', '-200') : baseColor.split(' ')[0];
                               const borderColor = isSelected ? baseColor.split(' ')[2].replace('-200', '-500') : baseColor.split(' ')[2];
                               const textColor = baseColor.split(' ')[1];
-                              const ResizeHandle = () => (
-                                <div className={`w-3 h-3 bg-white border border-slate-300 rounded-full shadow-sm absolute -right-1.5 -bottom-1.5 ${isSelected ? 'block' : 'hidden group-hover:block'}`} />
-                              );
 
                               return (
                                 <Rnd
@@ -1383,13 +1556,62 @@ export default function Upload() {
                                   lockAspectRatio={field.type === 'Stamp'}
                                   dragGrid={[1, 1]}
                                   resizeGrid={[1, 1]}
-                                  onDragStart={(e) => { e.stopPropagation(); setSelectedFieldId(field.id); }}
-                                  onDrag={(e, data) => handleDrag(field.id, data)}
-                                  onDragStop={(e, data) => {
-                                    setDragGuides({ horizontal: null, vertical: null });
-                                    updateFieldPosition(field.id, data.x, data.y);
+                                  onDragStart={(e, data) => {
+                                    e.stopPropagation();
+                                    hasDraggedRef.current = false;
+                                    
+                                    let currentSelectedIds = selectedFieldIds;
+                                    if (!e.shiftKey && !selectedFieldIds.includes(field.id)) {
+                                      currentSelectedIds = [field.id];
+                                      setSelectedFieldIds([field.id]);
+                                    }
+                                    
+                                    const originalPositions = {};
+                                    fields.forEach(f => {
+                                      if (currentSelectedIds.includes(f.id)) {
+                                        originalPositions[f.id] = { x: f.x, y: f.y };
+                                      }
+                                    });
+                                    dragStartPositionsRef.current = originalPositions;
+                                    dragStartMouseRef.current = { x: data.x, y: data.y };
                                   }}
-                                  onResizeStop={(e, direction, ref, delta, position) => {
+                                  onDrag={(data) => {
+                                    hasDraggedRef.current = true;
+                                    handleDrag(field.id, data);
+                                    
+                                    if (selectedFieldIds.length > 1 && selectedFieldIds.includes(field.id)) {
+                                      const deltaX = data.x - dragStartMouseRef.current.x;
+                                      const deltaY = data.y - dragStartMouseRef.current.y;
+                                      
+                                      setFields(prev => prev.map(f => {
+                                        if (selectedFieldIds.includes(f.id) && f.id !== field.id) {
+                                          const orig = dragStartPositionsRef.current[f.id];
+                                          if (orig) {
+                                            return { ...f, x: orig.x + deltaX, y: orig.y + deltaY };
+                                          }
+                                        }
+                                        return f;
+                                      }));
+                                    }
+                                  }}
+                                  onDragStop={(data) => {
+                                    setDragGuides({ horizontal: null, vertical: null });
+                                    
+                                    if (selectedFieldIds.length > 1 && selectedFieldIds.includes(field.id)) {
+                                      const deltaX = data.x - dragStartMouseRef.current.x;
+                                      const deltaY = data.y - dragStartMouseRef.current.y;
+                                      
+                                      selectedFieldIds.forEach(id => {
+                                        const orig = dragStartPositionsRef.current[id];
+                                        if (orig) {
+                                          updateFieldPosition(id, orig.x + deltaX, orig.y + deltaY);
+                                        }
+                                      });
+                                    } else {
+                                      updateFieldPosition(field.id, data.x, data.y);
+                                    }
+                                  }}
+                                  onResizeStop={(ref, position) => {
                                     updateFieldSize(field.id, parseInt(ref.style.width), parseInt(ref.style.height));
                                     updateFieldPosition(field.id, position.x, position.y);
                                   }}
@@ -1408,10 +1630,18 @@ export default function Upload() {
                                     topLeft: <div className={`w-full h-full bg-white border border-slate-400 rounded-full shadow-sm ${isSelected ? 'block' : 'hidden group-hover:block'}`} />,
                                   }}
                                   className={`absolute border-[1.5px] flex items-center justify-center group cursor-move z-40 hover:shadow-md transition-shadow ${bgColor} ${borderColor} ${isSelected ? 'shadow-md z-50' : 'shadow-sm'}`}
-                                  onClick={(e) => { e.stopPropagation(); setSelectedFieldId(field.id); }}
+                                  onClick={(e) => { 
+                                    e.stopPropagation();
+                                    if (hasDraggedRef.current) return;
+                                    if (field.type !== 'Initial' && e.shiftKey) {
+                                      setSelectedFieldIds(prev => prev.includes(field.id) ? prev.filter(id => id !== field.id) : [...prev, field.id]);
+                                    } else {
+                                      setSelectedFieldIds([field.id]);
+                                    }
+                                  }}
                                 >
                                   {/* Floating Tooltip/Toolbar for Selected Field */}
-                                  {isSelected && (
+                                  {isSelected && selectedFieldIds.length === 1 && (
                                     <div 
                                       className="absolute -top-12 left-0 bg-white border border-slate-200 rounded shadow-md flex items-center h-10 px-1 gap-1 z-50 pointer-events-auto"
                                       onClick={(e) => e.stopPropagation()} 
@@ -1452,7 +1682,7 @@ export default function Upload() {
                                             e.stopPropagation();
                                             const duplicatedField = { ...field, id: `field_${Date.now()}`, x: field.x + 20, y: field.y + 20, xPct: field.xPct + 2, yPct: field.yPct + 2 };
                                             setFields([...fields, duplicatedField]);
-                                            setSelectedFieldId(duplicatedField.id);
+                                            setSelectedFieldIds([duplicatedField.id]);
                                           }}
                                           className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded transition-colors"
                                           title="Duplicate"
@@ -1463,7 +1693,7 @@ export default function Upload() {
                                       
                                       {/* Delete Button */}
                                       <button 
-                                        onClick={(e) => { e.stopPropagation(); deleteField(field.id); setSelectedFieldId(null); }}
+                                        onClick={(e) => { e.stopPropagation(); deleteField(field.id); setSelectedFieldIds([]); }}
                                         className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors border-l border-slate-100"
                                         title="Delete"
                                       >

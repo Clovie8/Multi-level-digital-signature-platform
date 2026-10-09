@@ -143,10 +143,10 @@ export default function AuditLogs() {
 
   return (
     <div className="min-h-full bg-white">
-      <div className="max-w-[1400px] mx-auto px-6 py-8">
+      <div className="max-w-[1400px] mx-auto px-2 sm:px-6 py-6 sm:py-8">
 
         {/* Header */}
-        <div className="flex items-end justify-between gap-4 flex-wrap mb-2">
+        <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-2 px-2 sm:px-0">
           <div className="flex items-center gap-3">
             <div className="h-11 w-11 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
               <ScrollText className="h-5 w-5 text-slate-600" />
@@ -179,7 +179,7 @@ export default function AuditLogs() {
         </div>
 
         {/* Live status row */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-sm mb-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-sm mb-6 px-2 sm:px-0">
           <div className="flex items-center gap-2">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -205,7 +205,7 @@ export default function AuditLogs() {
 
         {/* Filters Panel */}
         {showFilters && (
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-6 grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div className="bg-white sm:rounded-xl border-y sm:border border-slate-200 shadow-sm p-4 mb-6 grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-1">Action contains</label>
               <input
@@ -246,7 +246,7 @@ export default function AuditLogs() {
         )}
 
         {/* Table */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden relative">
+        <div className="bg-white sm:rounded-md border-y sm:border border-slate-200 shadow-sm overflow-hidden relative">
           {isRefreshing && !isLoading && (
             <div className="absolute inset-0 bg-white/40 z-10 flex items-start justify-center pt-6 pointer-events-none">
               <span className="flex items-center gap-2 bg-slate-900 text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow-lg">
@@ -267,13 +267,13 @@ export default function AuditLogs() {
               <p className="text-xs text-slate-500 mt-1 max-w-sm">Try adjusting your filters.</p>
             </div>
           ) : (
-            <table className={`w-full text-left transition-opacity ${isRefreshing ? 'opacity-60' : 'opacity-100'}`}>
+            <table className={`w-full text-left table-fixed transition-opacity ${isRefreshing ? 'opacity-60' : 'opacity-100'}`}>
               <thead>
                 <tr className="border-b border-slate-200">
-                  <th className="px-5 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Action</th>
-                  <th className="px-5 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Document</th>
-                  <th className="px-5 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Actor</th>
-                  <th className="px-5 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Timestamp</th>
+                  <th className="w-[30%] sm:w-[25%] px-2 sm:px-5 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Action</th>
+                  <th className="w-[70%] sm:w-[35%] px-2 sm:px-5 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Document</th>
+                  <th className="hidden sm:table-cell w-[25%] px-5 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Actor</th>
+                  <th className="hidden sm:table-cell w-[15%] px-5 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Timestamp</th>
                 </tr>
               </thead>
               <tbody>
@@ -283,10 +283,16 @@ export default function AuditLogs() {
                     onClick={() => setSelectedLog(log)}
                     className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50 cursor-pointer transition-colors"
                   >
-                    <td className="px-5 py-3"><ActionBadge action={log.action} /></td>
-                    <td className="px-5 py-3 text-sm text-slate-900 font-medium">{log.documentName || '—'}</td>
-                    <td className="px-5 py-3 text-sm text-slate-500">{log.actorEmail}</td>
-                    <td className="px-5 py-3 text-xs text-slate-400 whitespace-nowrap">{formatTimestamp(log.createdAt)}</td>
+                    <td className="px-2 sm:px-5 py-3 align-top min-w-0"><ActionBadge action={log.action} /></td>
+                    <td className="px-2 sm:px-5 py-3 min-w-0">
+                      <p className="text-sm text-slate-900 font-medium truncate">{log.documentName || '—'}</p>
+                      <div className="sm:hidden mt-1">
+                        <p className="text-xs text-slate-500 truncate">{log.actorEmail}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5 whitespace-nowrap">{formatTimestamp(log.createdAt)}</p>
+                      </div>
+                    </td>
+                    <td className="hidden sm:table-cell px-5 py-3 text-sm text-slate-500 truncate">{log.actorEmail}</td>
+                    <td className="hidden sm:table-cell px-5 py-3 text-xs text-slate-400 whitespace-nowrap">{formatTimestamp(log.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -296,22 +302,22 @@ export default function AuditLogs() {
 
         {/* Pagination */}
         {pagination.total > 0 && (
-          <div className="flex items-center justify-between mt-4 text-sm text-slate-500">
-            <span>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4 px-2 sm:px-0 text-sm text-slate-500">
+            <span className="text-xs sm:text-sm">
               Page {pagination.page} of {pagination.totalPages} · {pagination.total} total
             </span>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
               <button
                 onClick={() => handlePageChange(pagination.page - 1)}
                 disabled={pagination.page <= 1}
-                className="px-3 py-1.5 text-xs font-semibold rounded-md border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors"
+                className="flex-1 sm:flex-none px-3 py-1.5 text-xs font-semibold rounded-md border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors text-center"
               >
                 Previous
               </button>
               <button
                 onClick={() => handlePageChange(pagination.page + 1)}
                 disabled={pagination.page >= pagination.totalPages}
-                className="px-3 py-1.5 text-xs font-semibold rounded-md border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors"
+                className="flex-1 sm:flex-none px-3 py-1.5 text-xs font-semibold rounded-md border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-colors text-center"
               >
                 Next
               </button>
