@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, useNavigate, useLocation, useOutletContext, Link } from 'react-router-dom';
-import { Menu, X, Home, Settings, LogOut, User, ChevronDown, ChevronLeft, ChevronRight, UploadCloud, ShieldCheck, ScrollText, FolderOpen, Clock, Layers } from 'lucide-react';
+import { Menu, X, Home, Settings, LogOut, User, ChevronDown, ChevronLeft, ChevronRight, UploadCloud, ShieldCheck, ScrollText, FolderOpen, Clock, Layers, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
 
@@ -95,7 +95,7 @@ export default function Layout() {
     ...(user?.role !== 'admin' ? [{ name: 'Dashboard', href: '/', icon: Home }] : []),
     { name: 'My Documents', href: '/documents', icon: FolderOpen },
     { name: 'New Document', href: '/upload', icon: UploadCloud },
-    // { name: 'My Templates', href: '/folder', icon: FileSignature },
+    { name: 'Trash', href: '/trash', icon: Trash2 },
     { name: 'Profile Settings', href: '/Settings', icon: Settings },
     ...(user?.role === 'admin' ? [
       { name: 'All Documents', href: '/admin/all-documents', icon: Layers },
@@ -112,10 +112,16 @@ export default function Layout() {
   const getPageTitle = () => {
     if (dynamicTitle) return dynamicTitle;
 
-    const currentRoute = navigation.find(item => item.href === location.pathname);
+    const fullPath = `${location.pathname}${location.search}`;
+    const currentRoute = navigation.find(item => 
+      item.href.includes('?') 
+        ? fullPath === item.href 
+        : location.pathname === item.href
+    );
     if (currentRoute) return currentRoute.name;
 
     // Smart fallbacks for dynamic routes
+    if (location.pathname.startsWith('/trash')) return 'Trash';
     if (location.pathname.startsWith('/review/')) return 'Review Document';
     if (location.pathname.startsWith('/sign/')) return 'Sign Document';
     if (location.pathname.startsWith('/admin/audit-logs')) return 'Audit Logs';
@@ -131,12 +137,15 @@ export default function Layout() {
   useEffect(() => {
     const title = getPageTitle();
     document.title = title ? `${title} | DSign` : 'DSign';
-  }, [dynamicTitle, location.pathname, user]);
+  }, [dynamicTitle, location.pathname, location.search, user]);
 
   const NavLinks = ({ isExpanded = true }) => (
     <>
       {navigation.map((item) => {
-        const isActive = location.pathname === item.href;
+        const fullPath = `${location.pathname}${location.search}`;
+        const isActive = item.href.includes('?') 
+          ? fullPath === item.href 
+          : location.pathname === item.href;
         return (
           <Link
             key={item.name}

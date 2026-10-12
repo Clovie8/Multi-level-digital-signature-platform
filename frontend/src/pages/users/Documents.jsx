@@ -4,7 +4,7 @@ import ContextMenu from '../../components/folders/ContextMenu';
 import { useAsyncLock } from '../../hooks/useAsyncLock';
 import { DndContext, useDraggable, useDroppable, DragOverlay, MouseSensor, TouchSensor, useSensor, useSensors, KeyboardSensor } from '@dnd-kit/core';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
 import Select from '../../components/ui/Select';
@@ -403,6 +403,7 @@ function RowActions({ document, currentUser, onView, onVoided, onContextMenuActi
   if (document.initiatorId === currentUser?.id) {
     items.push({ key: 'move', label: 'Move to...', icon: Folder, onClick: () => { setIsMenuOpen(false); onContextMenuAction('move', { ...document, type: 'document' }) } });
     items.push({ key: 'rename', label: 'Rename', icon: Pencil, onClick: () => { setIsMenuOpen(false); onContextMenuAction('rename', { ...document, type: 'document' }) } });
+    items.push({ key: 'trash', label: 'Move to Trash', icon: Trash2, danger: true, onClick: () => { setIsMenuOpen(false); onContextMenuAction('trash', { ...document, type: 'document' }) } });
   }
 
   return (
@@ -1122,6 +1123,7 @@ function FolderTableRow({ folder, onOpen, setContextMenu }) {
 
 export default function Documents() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [documents, setDocuments] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -1271,30 +1273,40 @@ export default function Documents() {
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
   const [itemToRename, setItemToRename] = useState(null);
   const [renameValue, setRenameValue] = useState('');
-  const [folderToDelete, setFolderToDelete] = useState(null);
+  const [itemToTrash, setItemToTrash] = useState(null);
   const [folders, setFolders] = useState([]);
 
-    const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
+  const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
   const [selectedItemsForMove, setSelectedItemsForMove] = useState([]);
   const [contextMenu, setContextMenu] = useState(null);
 
   const [activeDragItem, setActiveDragItem] = useState(null);
   const [isDraggingSelection, setIsDraggingSelection] = useState(false);
 
-  
-  
-  
-  const [handleDeleteFolder, isDeletingFolder] = useAsyncLock(async () => {
-    if (!folderToDelete) return;
+  const [handleConfirmMoveToTrash, isTrashing] = useAsyncLock(async () => {
+    if (!itemToTrash) return;
     try {
-      await api.delete('/api/folders/' + folderToDelete.id);
-      setFolders(prev => prev.filter(f => f.id !== folderToDelete.id));
-      if (currentFolderId === folderToDelete.id) setCurrentFolderId(null);
-      toast.success('Folder deleted');
-      setFolderToDelete(null);
+      await api.post('/api/trash/move', {
+        itemType: itemToTrash.type,
+        itemId: itemToTrash.id
+      });
+      toast.success(`${itemToTrash.type === 'folder' ? 'Folder' : itemToTrash.type === 'template' ? 'Template' : 'Document'} moved to Trash`);
+      const trashed = itemToTrash;
+      setItemToTrash(null);
+      if (trashed.type === 'folder') {
+        setFolders(prev => prev.filter(f => f.id !== trashed.id));
+        if (currentFolderId === trashed.id) setCurrentFolderId(null);
+      } else if (trashed.type === 'template') {
+        setTemplates(prev => prev.filter(t => t.id !== trashed.id));
+      } else {
+        setDocuments(prev => prev.filter(d => d.id !== trashed.id));
+      }
+      fetchFolders();
+      fetchDocuments();
+      fetchTemplates();
     } catch (error) {
-      console.error(error);
-      toast.error('Failed to delete folder');
+      console.error('Error moving to trash:', error);
+      toast.error(error.response?.data?.error || 'Failed to move to Trash');
     }
   });
 
@@ -1376,21 +1388,8 @@ export default function Documents() {
     } else if (action === 'share' && item.type === 'folder') {
       setShareFolderId(item.id);
       setIsShareModalOpen(true);
-    } else if (action === 'delete') {
-      if (item.type === 'folder') {
-        setFolderToDelete(item);
-      } else if (item.type === 'template') {
-        if (!window.confirm('Are you sure you want to delete this template?')) return;
-        try {
-          await api.delete('/api/templates/' + item.id);
-          setTemplates(prev => prev.filter(t => t.id !== item.id));
-          toast.success('Template deleted');
-        } catch (err) {
-          toast.error(err.response?.data?.error || 'Failed to delete template');
-        }
-      } else {
-        toast.info('Document deletion coming soon');
-      }
+    } else if (action === 'trash' || action === 'delete') {
+      setItemToTrash(item);
     }
     setContextMenu(null);
   };
@@ -1466,6 +1465,14 @@ export default function Documents() {
     };
     loadInitialDocuments();
   }, [fetchDocuments, fetchTemplates]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tabParam = params.get('tab');
+    if (tabParam && ['all', 'templates', 'needs_decision'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [location.search]);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -1600,8 +1607,11 @@ export default function Documents() {
     return filteredTemplates.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredTemplates, currentPage, itemsPerPage]);
 
-  const totalPages = Math.ceil((activeTab === 'templates' ? filteredTemplates.length : filteredDocuments.length) / itemsPerPage);
-
+  const totalPages = Math.ceil(
+    (activeTab === 'templates'
+      ? filteredTemplates.length
+      : filteredDocuments.length) / itemsPerPage
+  );
 
   const toggleCheck = (id) => {
     setCheckedIds((prev) => {
@@ -1627,7 +1637,6 @@ export default function Documents() {
     [documents, checkedIds]
   );
 
-  
   // Generate breadcrumbs
   const breadcrumbs = useMemo(() => {
     const crumbs = [];
@@ -1711,7 +1720,10 @@ export default function Documents() {
             return (
               <button
                 key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
+                onClick={() => {
+                  setActiveTab(tab.key);
+                  navigate(tab.key === 'all' ? '/documents' : `/documents?tab=${tab.key}`, { replace: true });
+                }}
                 className={`flex items-center gap-2 pb-3 text-sm font-semibold border-b-2 transition-colors ${isActive ? 'text-slate-900 border-slate-900' : 'text-slate-400 border-transparent hover:text-slate-600'
                   }`}
               >
@@ -1725,7 +1737,6 @@ export default function Documents() {
           })}
         </div>
 
-        
         {activeTab !== 'needs_decision' && (
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-4">
             <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
@@ -1798,7 +1809,7 @@ export default function Documents() {
               <Clock className="h-6 w-6 mb-2 animate-pulse" />
               <p className="text-sm">Loading…</p>
             </div>
-          ) : (filteredDocuments.length === 0 && filteredTemplates.length === 0) && currentLevelFolders.length === 0 ? (
+          ) : filteredDocuments.length === 0 && filteredTemplates.length === 0 && currentLevelFolders.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center px-6">
               <FileSignature className="h-10 w-10 text-slate-300 mb-3" />
               <h2 className="text-sm font-semibold text-slate-900">
@@ -1830,45 +1841,44 @@ export default function Documents() {
                   </tr>
                 </thead>
                 <tbody>
-                   
-                    {currentLevelFolders.map(folder => (
-                      <FolderTableRow
-                        key={folder.id}
-                        folder={folder}
-                        isChecked={checkedIds.has(folder.id)}
-                        onCheck={toggleCheck}
-                        onOpen={handleOpenFolder}
-                        setContextMenu={setContextMenu}
-                      />
-                    ))}
+                  {currentLevelFolders.map(folder => (
+                    <FolderTableRow
+                      key={folder.id}
+                      folder={folder}
+                      isChecked={checkedIds.has(folder.id)}
+                      onCheck={toggleCheck}
+                      onOpen={handleOpenFolder}
+                      setContextMenu={setContextMenu}
+                    />
+                  ))}
 
-                    {activeTab === 'templates' ? (
-                      paginatedTemplates.map((template) => (
-                        <TemplateTableRow
-                          key={template.id}
-                          template={template}
-                          isChecked={checkedIds.has(template.id)}
-                          onCheck={toggleCheck}
-                          onUse={handleUseTemplate}
-                          setContextMenu={setContextMenu}
-                          isUsing={usingTemplateId === template.id}
-                        />
-                      ))
-                    ) : (
-                      paginatedDocuments.map((document) => (
-                        <DocumentTableRow
-                          key={document.id}
-                          document={document}
-                          currentUser={currentUser}
-                          isChecked={checkedIds.has(document.id)}
-                          onCheck={toggleCheck}
-                          onOpen={handleSelect}
-                          onVoided={handleRefresh}
-                          setContextMenu={setContextMenu}
-                          onContextMenuAction={handleContextMenuAction}
-                        />
-                      ))
-                    )}
+                  {activeTab === 'templates' ? (
+                    paginatedTemplates.map((template) => (
+                      <TemplateTableRow
+                        key={template.id}
+                        template={template}
+                        isChecked={checkedIds.has(template.id)}
+                        onCheck={toggleCheck}
+                        onUse={handleUseTemplate}
+                        setContextMenu={setContextMenu}
+                        isUsing={usingTemplateId === template.id}
+                      />
+                    ))
+                  ) : (
+                    paginatedDocuments.map((document) => (
+                      <DocumentTableRow
+                        key={document.id}
+                        document={document}
+                        currentUser={currentUser}
+                        isChecked={checkedIds.has(document.id)}
+                        onCheck={toggleCheck}
+                        onOpen={handleSelect}
+                        onVoided={handleRefresh}
+                        setContextMenu={setContextMenu}
+                        onContextMenuAction={handleContextMenuAction}
+                      />
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -2041,29 +2051,29 @@ export default function Documents() {
           </div>
         </div>
       )}
-      {folderToDelete && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4 animate-in fade-in" onClick={() => !isDeletingFolder && setFolderToDelete(null)}>
+      {itemToTrash && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4 animate-in fade-in" onClick={() => !isTrashing && setItemToTrash(null)}>
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
             <div className="p-6">
-              <h3 className="text-lg font-semibold text-slate-900 mb-2">Delete Folder</h3>
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">Move to Trash</h3>
               <p className="text-sm text-slate-500 mb-6">
-                Are you sure you want to delete <span className="font-semibold text-slate-700">"{folderToDelete.name}"</span>? All contents will be permanently deleted. This action cannot be undone.
+                Are you sure you want to move <span className="font-semibold text-slate-700">"{itemToTrash.name || itemToTrash.fileName}"</span> to Trash? It will be automatically deleted forever after 30 days.
               </p>
               <div className="flex justify-end gap-3">
                 <button 
-                  onClick={() => !isDeletingFolder && setFolderToDelete(null)}
-                  disabled={isDeletingFolder}
+                  onClick={() => !isTrashing && setItemToTrash(null)}
+                  disabled={isTrashing}
                   className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button 
-                  onClick={handleDeleteFolder}
-                  disabled={isDeletingFolder}
-                  className="flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:opacity-70"
+                  onClick={handleConfirmMoveToTrash}
+                  disabled={isTrashing}
+                  className="flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-md transition-colors disabled:opacity-70"
                 >
-                  {isDeletingFolder && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
-                  {isDeletingFolder ? 'Deleting...' : 'Delete Folder'}
+                  {isTrashing && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
+                  {isTrashing ? 'Moving...' : 'Move to Trash'}
                 </button>
               </div>
             </div>

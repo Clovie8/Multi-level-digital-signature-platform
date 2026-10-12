@@ -16,6 +16,7 @@ import Layout from './components/Layout';
 import ProtectedRoute from './routes/ProtectedRoute';
 import AdminRoutes from './routes/AdminRoutes';
 import Folder from './pages/users/Folder';
+import Trash from './pages/users/Trash';
 
 function App() {
   return (
@@ -43,6 +44,7 @@ function App() {
             <Route path="/upload" element={<Upload />} />
             <Route path="/review/:id" element={<Review />} />
             <Route path="/folder" element={<Folder />} />
+            <Route path="/trash" element={<Trash />} />
 
             {/* Admin-only routes*/}
             <Route element={<AdminRoutes />}>
