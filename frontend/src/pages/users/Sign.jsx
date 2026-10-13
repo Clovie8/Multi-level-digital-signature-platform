@@ -448,7 +448,42 @@ export default function Sign() {
         const drawnDataURL = sigPadRef.current
           .getCanvas()
           .toDataURL("image/png");
-        applyToFields(drawnDataURL);
+
+        if (saveForFuture) {
+          if (!vaultPin || vaultPin.length !== 4) {
+            return toast.error("Your secure PIN must be exactly 4 digits.");
+          }
+
+          const drawnBlob = await (await fetch(drawnDataURL)).blob();
+          const formData = new FormData();
+          formData.append("signatureImage", drawnBlob, "signature.png");
+          formData.append("signerName", signerInfo?.name || "Guest Signer");
+          formData.append(
+            "signerEmail",
+            signerInfo?.email || "guest@example.com",
+          );
+          formData.append("saveForFuture", "true");
+          formData.append("pin", vaultPin);
+
+          const uploadRes = await api.post("/api/signatures/upload", formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+          });
+
+          applyToFields(drawnDataURL, uploadRes.data.signature.signature_url);
+
+          setSavedSignatures((prev) => [
+            {
+              id: uploadRes.data.signature.id || Date.now(),
+              originalKey: uploadRes.data.signature.signature_url,
+              displayUrl: drawnDataURL,
+              isProtected: true,
+            },
+            ...prev,
+          ]);
+        } else {
+          applyToFields(drawnDataURL);
+        }
+
         setIsModalOpen(false);
       } else if (signMode === "type") {
         if (!signatureText.trim())
@@ -1127,25 +1162,170 @@ export default function Sign() {
 
               {/* The Input Areas */}
               {signMode === "draw" && (
-                <div
-                  ref={padContainerRef}
-                  className="w-full h-40 border border-slate-300 rounded-lg bg-slate-50 relative"
-                >
-                  <SignatureCanvas
-                    ref={sigPadRef}
-                    penColor="black"
-                    canvasProps={{
-                      width: padSize.width,
-                      height: padSize.height,
-                      className: "rounded-lg cursor-crosshair",
-                    }}
-                  />
-                  <button
-                    onClick={() => sigPadRef.current.clear()}
-                    className="absolute top-2 right-2 text-xs font-medium text-slate-400 hover:text-slate-600 bg-white px-2 py-1 rounded shadow-sm border border-slate-200"
+                <div>
+                  <div
+                    ref={padContainerRef}
+                    className="w-full h-40 border border-slate-300 rounded-lg bg-slate-50 relative"
                   >
-                    Clear
-                  </button>
+                    <SignatureCanvas
+                      ref={sigPadRef}
+                      penColor="black"
+                      canvasProps={{
+                        width: padSize.width,
+                        height: padSize.height,
+                        className: "rounded-lg cursor-crosshair",
+                      }}
+                    />
+                    <button
+                      onClick={() => sigPadRef.current.clear()}
+                      className="absolute top-2 right-2 text-xs font-medium text-slate-400 hover:text-slate-600 bg-white px-2 py-1 rounded shadow-sm border border-slate-200"
+                    >
+                      Clear
+                    </button>
+                  </div>
+
+                  <div className="w-full mt-4 bg-blue-50 border border-blue-100 p-3 rounded-lg text-left">
+                    <div className="flex items-center">
+                      <input
+                        id="saveDrawSignature"
+                        type="checkbox"
+                        checked={saveForFuture}
+                        onChange={async (e) => {
+                          const isChecked = e.target.checked;
+                          setSaveForFuture(isChecked);
+                          if (isChecked) {
+                            setIsCheckingSecurity(true);
+                            try {
+                              const res = await api.get(
+                                `/api/signatures/security-status?email=${signerInfo.email}`,
+                              );
+                              setHasExistingPin(res.data.hasPin);
+                            } catch (error) {}
+                            setIsCheckingSecurity(false);
+                          } else {
+                            setVaultPin("");
+                          }
+                        }}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-300 rounded cursor-pointer"
+                      />
+                      <label
+                        htmlFor="saveDrawSignature"
+                        className="ml-2 block text-sm text-blue-900 font-medium cursor-pointer"
+                      >
+                        Save this signature for future use.
+                      </label>
+                    </div>
+
+                    {/* INLINE DRAW PIN UI */}
+                    {saveForFuture && (
+                      <div className="mt-4 p-4 border border-blue-200 bg-white rounded-lg animate-in slide-in-from-top-2 fade-in duration-200">
+                        {isCheckingSecurity ? (
+                          <div className="flex items-center justify-center text-blue-600 py-2">
+                            <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mr-2"></div>
+                            <span className="text-xs font-medium">
+                              Checking security status...
+                            </span>
+                          </div>
+                        ) : isResettingPin ? (
+                          <div className="text-left animate-in fade-in duration-200">
+                            <label className="block text-sm font-semibold text-amber-900 mb-1">
+                              Reset Vault PIN
+                            </label>
+                            <p className="text-xs text-amber-700 mb-3">
+                              Enter the 6-digit code sent to your email and a
+                              new 4-digit PIN.
+                            </p>
+                            <div className="flex space-x-2 mb-3">
+                              <input
+                                type="text"
+                                maxLength="6"
+                                value={resetOtp}
+                                onChange={(e) =>
+                                  setResetOtp(
+                                    e.target.value.replace(/\D/g, ""),
+                                  )
+                                }
+                                className="w-1/2 px-3 py-2 border border-amber-300 rounded focus:ring-2 focus:ring-amber-500 text-center tracking-widest bg-white text-sm"
+                                placeholder="6-Digit OTP"
+                              />
+                              <input
+                                type="password"
+                                maxLength="4"
+                                value={newPin}
+                                onChange={(e) =>
+                                  setNewPin(e.target.value.replace(/\D/g, ""))
+                                }
+                                className="w-1/2 px-3 py-2 border border-amber-300 rounded focus:ring-2 focus:ring-amber-500 text-center tracking-widest bg-white text-sm"
+                                placeholder="New 4-Digit PIN"
+                              />
+                            </div>
+                            <div className="flex space-x-2">
+                              <button
+                                type="button"
+                                onClick={() => setIsResettingPin(false)}
+                                className="flex-1 py-1.5 bg-white border border-amber-300 text-amber-800 rounded text-xs font-medium hover:bg-amber-50 transition-colors shadow-sm"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleConfirmPinReset()}
+                                disabled={isConfirmingReset}
+                                className="flex-1 py-1.5 bg-amber-600 text-white rounded text-xs font-medium hover:bg-amber-700 transition-colors shadow-sm disabled:opacity-75 disabled:cursor-not-allowed flex items-center justify-center"
+                              >
+                                {isConfirmingReset ? (
+                                  <>
+                                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1.5"></div>{" "}
+                                    Resetting...
+                                  </>
+                                ) : (
+                                  "Confirm Reset"
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <label className="flex items-center text-sm font-semibold text-slate-800 mb-1">
+                              <Lock className="h-3.5 w-3.5 mr-1.5 text-blue-600" />
+                              {hasExistingPin
+                                ? "Enter Vault PIN to Save"
+                                : "Create Vault PIN"}
+                            </label>
+                            <p className="text-xs text-slate-500 mb-3">
+                              {hasExistingPin
+                                ? "Enter your existing 4-digit Signature Vault PIN to append this image."
+                                : "Create a 4-digit PIN to secure your signatures for future use."}
+                            </p>
+                            <div className="flex items-center space-x-4">
+                              <PinInputBox
+                                pin={vaultPin}
+                                setPin={setVaultPin}
+                              />
+
+                              {hasExistingPin && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleForgotPin()}
+                                  disabled={isRequestingReset}
+                                  className="text-xs font-medium text-blue-600 hover:text-blue-800 underline disabled:opacity-50 flex items-center"
+                                >
+                                  {isRequestingReset ? (
+                                    <>
+                                      <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mr-1"></div>{" "}
+                                      Sending...
+                                    </>
+                                  ) : (
+                                    "Forgot PIN?"
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
