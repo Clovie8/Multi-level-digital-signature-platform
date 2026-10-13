@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAsyncLock } from '../../hooks/useAsyncLock';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../lib/api';
@@ -33,12 +33,12 @@ const DraggableField = ({ icon: Icon, label, type, activeColorClasses, onDragSta
 
 // Styling for the template picker to match the slate/white theme used everywhere else
 
-function TemplateBrowserModal({ folders, templates, onClose, onSelect }) {
+function TemplateBrowserModal({ folders, templates, isLoading, onClose, onSelect }) {
   const [currentFolderId, setCurrentFolderId] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
 
-  const templateFolders = folders.filter(f => f.type === 'template' && (f.parent_folder_id || null) === currentFolderId);
-  const currentTemplates = templates.filter(t => (t.folder_id || null) === currentFolderId);
+  const templateFolders = folders.filter(f => f.type === 'template' && (f.parent_folder_id || f.parentId || f.parent_id || null) === currentFolderId);
+  const currentTemplates = templates.filter(t => (t.folder_id || t.folderId || null) === currentFolderId);
 
   const getBreadcrumbs = () => {
     const crumbs = [{ id: null, name: 'Templates Root' }];
@@ -90,7 +90,12 @@ function TemplateBrowserModal({ folders, templates, onClose, onSelect }) {
 
         {/* Directory View */}
         <div className="flex-grow overflow-y-auto p-6 bg-white custom-scrollbar">
-          {templateFolders.length === 0 && currentTemplates.length === 0 ? (
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center h-full text-slate-400">
+              <Loader2 className="h-8 w-8 mb-2 animate-spin text-blue-600" />
+              <p className="text-sm">Loading templates...</p>
+            </div>
+          ) : templateFolders.length === 0 && currentTemplates.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-slate-400">
               <Folder className="h-12 w-12 mb-3 opacity-20" />
               <p>This folder is empty.</p>
@@ -281,22 +286,8 @@ export default function Upload() {
   const editDocumentId = searchParams.get('edit');
 
   const [currentUser, setCurrentUser] = useState(null);
-
-  useEffect(() => {
-    const fetchInitialData = async () => {
-      try {
-        const [userRes, foldersRes] = await Promise.all([
-          api.get('/api/auth/me'),
-          api.get('/api/folders/all').catch(() => ({ data: { folders: [] } }))
-        ]);
-        setCurrentUser(userRes.data);
-        setFolders(foldersRes.data.folders || []);
-      } catch (err) {
-        console.error(err);
-      }
-    };
-    fetchInitialData();
-  }, []);
+  const [folders, setFolders] = useState([]);
+  const [selectedFolderId, setSelectedFolderId] = useState(null);
 
   // Workflow State
   const [file, setFile] = useState(null);
@@ -306,13 +297,12 @@ export default function Upload() {
   // Upload Step Mode: 'new' PDF upload vs starting from a saved 'template'
   const [uploadMode, setUploadMode] = useState('new');
   const [templates, setTemplates] = useState([]);
-  const [setTemplatesLoading] = useState(false);
+  const [isTemplatesLoading, setIsTemplatesLoading] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
-
-  const [folders, setFolders] = useState([]);
-  const [selectedFolderId, setSelectedFolderId] = useState(null);
+  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const [templatesFetched, setTemplatesFetched] = useState(false);
 
   const getFolderPath = (folder) => {
     const path = [];
@@ -324,10 +314,45 @@ export default function Upload() {
     return path.join(' / ');
   };
 
-  // Flag set at upload time; the actual template is saved right before dispatch,
-  // once fields + signer roles are finalized (a raw upload alone has neither).
-  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
-  const [templatesFetched, setTemplatesFetched] = useState(false);
+  const fetchTemplates = useCallback(async () => {
+    setIsTemplatesLoading(true);
+    try {
+      const res = await api.get('/api/templates');
+      setTemplates(res.data.templates || []);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not load templates.');
+    } finally {
+      setIsTemplatesLoading(false);
+      setTemplatesFetched(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      try {
+        const [userRes, foldersRes, templatesRes] = await Promise.all([
+          api.get('/api/auth/me'),
+          api.get('/api/folders/all').catch(() => ({ data: { folders: [] } })),
+          api.get('/api/templates').catch(() => ({ data: { templates: [] } }))
+        ]);
+        setCurrentUser(userRes.data);
+        setFolders(foldersRes.data.folders || []);
+        if (templatesRes.data?.templates) {
+          setTemplates(templatesRes.data.templates);
+          setTemplatesFetched(true);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchInitialData();
+  }, []);
+
+  useEffect(() => {
+    if (uploadMode === 'template' && !templatesFetched) {
+      fetchTemplates();
+    }
+  }, [uploadMode, templatesFetched, fetchTemplates]);
 
   // Signer Hierarchy State
   const [isInitiatorFirst, setIsInitiatorFirst] = useState(false);
@@ -399,10 +424,35 @@ export default function Upload() {
 
   // LocalStorage Auto-Save & Hydration 
   const CACHE_KEY = 'upload_draft_state';
+  const SUBMITTED_FLAG = 'upload_submitted';
+
+  const isDispatchedRef = useRef(false);
+
+  // Guard against bfcache restores: if user navigates back after submitting,
+  // redirect them away immediately so they don't see stale Step 2 state.
+  useEffect(() => {
+    const handlePageShow = (e) => {
+      // e.persisted === true means the page was restored from bfcache
+      if (e.persisted && sessionStorage.getItem(SUBMITTED_FLAG)) {
+        sessionStorage.removeItem(SUBMITTED_FLAG);
+        navigate('/documents', { replace: true });
+      }
+    };
+    window.addEventListener('pageshow', handlePageShow);
+    return () => window.removeEventListener('pageshow', handlePageShow);
+  }, [navigate]);
 
   // Hydrate from cache on mount (if NOT explicitly editing a draft)
   useEffect(() => {
     if (editDocumentId) return; // Skip if they clicked "Edit" on a draft
+
+    // If we just submitted and the component is remounting fresh (not bfcache),
+    // clear the flag and do not hydrate.
+    if (sessionStorage.getItem(SUBMITTED_FLAG)) {
+      sessionStorage.removeItem(SUBMITTED_FLAG);
+      localStorage.removeItem(CACHE_KEY);
+      return;
+    }
 
     const cached = localStorage.getItem(CACHE_KEY);
     if (cached) {
@@ -434,8 +484,6 @@ export default function Upload() {
       }
     }
   }, [editDocumentId]);
-
-  const isDispatchedRef = useRef(false);
 
   // Auto-save to cache whenever state changes
   useEffect(() => {
@@ -494,23 +542,6 @@ export default function Upload() {
   };
 
 
-  useEffect(() => {
-    if (uploadMode !== 'template' || templatesFetched) return;
-
-    const fetchTemplates = async () => {
-      setTemplatesLoading(true);
-      try {
-        const res = await api.get('/api/templates');
-        setTemplates(res.data.templates || []);
-      } catch (err) {
-        toast.error(err.response?.data?.error || 'Could not load templates.');
-      } finally {
-        setTemplatesLoading(false);
-        setTemplatesFetched(true);
-      }
-    };
-    fetchTemplates();
-  }, [uploadMode, templatesFetched]);
 
 
   // 1: UPLOAD HANDLERS
@@ -567,7 +598,7 @@ export default function Upload() {
   });
   
 
-   const [handleUseTemplateSubmit] = useAsyncLock(async () => {
+   const [handleUseTemplateSubmit, isUsingTemplate] = useAsyncLock(async () => {
     if (!selectedTemplateId) return toast.error('Please select a template first.');
 
     try {
@@ -700,7 +731,9 @@ export default function Upload() {
 
       await api.patch(`/api/documents/${documentId}/draft-config`, { signers: finalSigners, fields, isInitiatorFirst, initiatorReceivesFinalCopy, currentStep, dueDate });
       toast.success('Saved as draft.');
+      // Mark as submitted BEFORE navigating so bfcache guard can intercept a back-press
       isDispatchedRef.current = true;
+      sessionStorage.setItem(SUBMITTED_FLAG, '1');
       localStorage.removeItem('upload_draft_state');
       setDocumentId(null);
       setCurrentStep(1);
@@ -708,7 +741,7 @@ export default function Upload() {
       setExistingFile(null);
       setFields([]);
       setSigners([{ id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200', receivesFinalCopy: true }]);
-      navigate('/documents');
+      navigate('/documents', { replace: true });
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not save this draft.');
     }
@@ -762,7 +795,9 @@ export default function Upload() {
       });
 
       toast.success(res.data.message);
+      // Mark as submitted BEFORE navigating so bfcache guard can intercept a back-press
       isDispatchedRef.current = true;
+      sessionStorage.setItem(SUBMITTED_FLAG, '1');
       localStorage.removeItem('upload_draft_state');
       setDocumentId(null);
       setCurrentStep(1);
@@ -772,16 +807,16 @@ export default function Upload() {
       setSigners([{ id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200', receivesFinalCopy: true }]);
 
       if (res.data.isInitiatorFirst && res.data.redirectToken) {
-        // Path A: Redirect instantly to signing canvas
-        navigate(`/sign/${res.data.redirectToken}`);
+        // Path A: Redirect instantly to signing canvas (replace so back doesn't return to upload)
+        navigate(`/sign/${res.data.redirectToken}`, { replace: true });
       } else {
-        // Path B: Third party is first, reset dashboard
-        setCurrentStep(1);
+        // Path B: Third party is first, go to documents (replace so back doesn't return to upload)
         setFile(null);
         setDocumentId(null);
         setFields([]);
         setSigners([{ id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200', receivesFinalCopy: true }]);
         setSaveAsTemplate(false);
+        navigate('/documents', { replace: true });
       }
     } catch (error) {
       console.error(error);
@@ -967,6 +1002,7 @@ export default function Upload() {
         <TemplateBrowserModal
           folders={folders}
           templates={templates}
+          isLoading={isTemplatesLoading}
           onClose={() => setIsTemplateModalOpen(false)}
           onSelect={setSelectedTemplateId}
         />
@@ -1132,10 +1168,10 @@ export default function Upload() {
                 <div className="mt-8 flex justify-end">
                   <button
                     onClick={handleUseTemplateSubmit}
-                    disabled={isLoading || !selectedTemplateId}
+                    disabled={isUsingTemplate || !selectedTemplateId}
                     className="flex items-center h-[46px] px-8 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-all shadow-sm hover:shadow disabled:opacity-50 group"
                   >
-                    {isLoading ? (
+                    {isUsingTemplate ? (
                       <>
                         <Loader2 className="animate-spin h-4 w-4 mr-2" /> Loading template...
                       </>

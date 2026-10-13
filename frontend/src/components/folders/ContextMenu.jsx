@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { FolderInput, Edit2, Share2, Trash2, Eye, ArrowRight } from 'lucide-react';
+import { FolderInput, Edit2, Share2, Trash2, Eye, ArrowRight, RotateCcw } from 'lucide-react';
 
 export default function ContextMenu({ x, y, item, onClose, onAction, activeTab }) {
   const menuRef = useRef(null);
@@ -33,6 +33,36 @@ export default function ContextMenu({ x, y, item, onClose, onAction, activeTab }
 
   // Determine user role for this item (default to manager if not provided, e.g., for owned documents or root items)
   const role = item.access_role || 'manager';
+
+  if (activeTab === 'trash') {
+    return (
+      <div 
+        ref={menuRef}
+        className="fixed z-[200] w-48 bg-white rounded-lg shadow-xl border border-slate-200 py-1"
+        style={style}
+      >
+        <div className="px-3 py-2 border-b border-slate-100 mb-1">
+          <p className="text-xs font-medium text-slate-500 truncate">{item.name || item.title || item.fileName || 'Item'}</p>
+        </div>
+
+        <button 
+          onClick={() => { onAction('restore', item); onClose(); }}
+          className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2"
+        >
+          <RotateCcw className="h-4 w-4 text-emerald-600" /> Restore
+        </button>
+
+        <div className="border-t border-slate-100 my-1"></div>
+
+        <button 
+          onClick={() => { onAction('purge', item); onClose(); }}
+          className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+        >
+          <Trash2 className="h-4 w-4" /> Delete Forever
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div 
@@ -88,15 +118,15 @@ export default function ContextMenu({ x, y, item, onClose, onAction, activeTab }
         </button>
       )}
       
-      {role === 'manager' && item.type !== 'document' && item.type !== 'template' && (
+      {role === 'manager' && (
         <>
           <div className="border-t border-slate-100 my-1"></div>
           
           <button 
-            onClick={() => { onAction('delete', item); onClose(); }}
+            onClick={() => { onAction('trash', item); onClose(); }}
             className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
           >
-            <Trash2 className="h-4 w-4" /> Delete
+            <Trash2 className="h-4 w-4" /> Move to Trash
           </button>
         </>
       )}

@@ -61,6 +61,10 @@ export default function Dashboard() {
 
   const { userName, stats, statusBreakdown, completedPerWeek, needsAttention, recentActivity, documentsInProgress } = data;
 
+  const displayedNeedsAttention = (needsAttention || []).slice(0, 5);
+  const displayedRecentActivity = (recentActivity || []).slice(0, 5);
+  const displayedDocumentsInProgress = (documentsInProgress || []).slice(0, 5);
+
   const statusPieData = Object.entries(statusBreakdown).map(([key, value]) => ({
     name: STATUS_LABELS[key],
     value,
@@ -211,7 +215,7 @@ export default function Dashboard() {
               <p className="text-sm text-slate-400 py-4">You're all caught up.</p>
             ) : (
               <div className="space-y-1 -mx-2">
-                {needsAttention.map((item) => (
+                {displayedNeedsAttention.map((item) => (
                   <div
                     key={item.id}
                     onClick={() => window.open(`/sign/${item.accessToken}`, '_blank', 'noopener,noreferrer')}
@@ -241,7 +245,7 @@ export default function Dashboard() {
               <p className="text-sm text-slate-400 py-4">No activity yet.</p>
             ) : (
               <div className="divide-y divide-slate-100">
-                {recentActivity.map((item) => (
+                {displayedRecentActivity.map((item) => (
                   <div key={item.id} className="py-2.5 first:pt-0 last:pb-0">
                     <p className="text-sm text-slate-700">
                       <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 bg-blue-500"></span>
@@ -271,7 +275,7 @@ export default function Dashboard() {
             <p className="text-sm text-slate-400 py-4">Nothing in progress right now.</p>
           ) : (
             <div className="divide-y divide-slate-100 -mx-2">
-              {documentsInProgress.map((doc) => (
+              {displayedDocumentsInProgress.map((doc) => (
                 <div
                   key={doc.id}
                   className="flex items-center justify-between py-3 px-2 sm:px-3 first:pt-0 last:pb-0 cursor-pointer hover:bg-slate-50 rounded-lg transition-colors group"
