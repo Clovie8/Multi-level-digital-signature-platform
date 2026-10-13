@@ -17,6 +17,7 @@ import ProtectedRoute from './routes/ProtectedRoute';
 import AdminRoutes from './routes/AdminRoutes';
 import Folder from './pages/users/Folder';
 import Trash from './pages/users/Trash';
+import Signatures from './pages/users/Signatures';
 
 function App() {
   return (
@@ -40,6 +41,7 @@ function App() {
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/documents" element={<Documents />} />
+            <Route path="/signatures" element={<Signatures />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/upload" element={<Upload />} />
             <Route path="/review/:id" element={<Review />} />

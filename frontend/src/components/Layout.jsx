@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, useNavigate, useLocation, useOutletContext, Link } from 'react-router-dom';
-import { Menu, X, Home, Settings, LogOut, User, ChevronDown, ChevronLeft, ChevronRight, UploadCloud, ShieldCheck, ScrollText, FolderOpen, Clock, Layers, Trash2 } from 'lucide-react';
+import { Menu, X, Home, Settings, LogOut, User, ChevronDown, ChevronLeft, ChevronRight, UploadCloud, ShieldCheck, ScrollText, FolderOpen, Clock, Layers, Trash2, PenTool } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
 
@@ -94,6 +94,7 @@ export default function Layout() {
     ] : []),
     ...(user?.role !== 'admin' ? [{ name: 'Dashboard', href: '/', icon: Home }] : []),
     { name: 'My Documents', href: '/documents', icon: FolderOpen },
+    { name: 'Signatures', href: '/signatures', icon: PenTool },
     { name: 'New Document', href: '/upload', icon: UploadCloud },
     { name: 'Trash', href: '/trash', icon: Trash2 },
     { name: 'Profile Settings', href: '/Settings', icon: Settings },
