@@ -424,10 +424,35 @@ export default function Upload() {
 
   // LocalStorage Auto-Save & Hydration 
   const CACHE_KEY = 'upload_draft_state';
+  const SUBMITTED_FLAG = 'upload_submitted';
+
+  const isDispatchedRef = useRef(false);
+
+  // Guard against bfcache restores: if user navigates back after submitting,
+  // redirect them away immediately so they don't see stale Step 2 state.
+  useEffect(() => {
+    const handlePageShow = (e) => {
+      // e.persisted === true means the page was restored from bfcache
+      if (e.persisted && sessionStorage.getItem(SUBMITTED_FLAG)) {
+        sessionStorage.removeItem(SUBMITTED_FLAG);
+        navigate('/documents', { replace: true });
+      }
+    };
+    window.addEventListener('pageshow', handlePageShow);
+    return () => window.removeEventListener('pageshow', handlePageShow);
+  }, [navigate]);
 
   // Hydrate from cache on mount (if NOT explicitly editing a draft)
   useEffect(() => {
     if (editDocumentId) return; // Skip if they clicked "Edit" on a draft
+
+    // If we just submitted and the component is remounting fresh (not bfcache),
+    // clear the flag and do not hydrate.
+    if (sessionStorage.getItem(SUBMITTED_FLAG)) {
+      sessionStorage.removeItem(SUBMITTED_FLAG);
+      localStorage.removeItem(CACHE_KEY);
+      return;
+    }
 
     const cached = localStorage.getItem(CACHE_KEY);
     if (cached) {
@@ -459,8 +484,6 @@ export default function Upload() {
       }
     }
   }, [editDocumentId]);
-
-  const isDispatchedRef = useRef(false);
 
   // Auto-save to cache whenever state changes
   useEffect(() => {
@@ -575,7 +598,7 @@ export default function Upload() {
   });
   
 
-   const [handleUseTemplateSubmit] = useAsyncLock(async () => {
+   const [handleUseTemplateSubmit, isUsingTemplate] = useAsyncLock(async () => {
     if (!selectedTemplateId) return toast.error('Please select a template first.');
 
     try {
@@ -708,7 +731,9 @@ export default function Upload() {
 
       await api.patch(`/api/documents/${documentId}/draft-config`, { signers: finalSigners, fields, isInitiatorFirst, initiatorReceivesFinalCopy, currentStep, dueDate });
       toast.success('Saved as draft.');
+      // Mark as submitted BEFORE navigating so bfcache guard can intercept a back-press
       isDispatchedRef.current = true;
+      sessionStorage.setItem(SUBMITTED_FLAG, '1');
       localStorage.removeItem('upload_draft_state');
       setDocumentId(null);
       setCurrentStep(1);
@@ -716,7 +741,7 @@ export default function Upload() {
       setExistingFile(null);
       setFields([]);
       setSigners([{ id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200', receivesFinalCopy: true }]);
-      navigate('/documents');
+      navigate('/documents', { replace: true });
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not save this draft.');
     }
@@ -770,7 +795,9 @@ export default function Upload() {
       });
 
       toast.success(res.data.message);
+      // Mark as submitted BEFORE navigating so bfcache guard can intercept a back-press
       isDispatchedRef.current = true;
+      sessionStorage.setItem(SUBMITTED_FLAG, '1');
       localStorage.removeItem('upload_draft_state');
       setDocumentId(null);
       setCurrentStep(1);
@@ -780,16 +807,16 @@ export default function Upload() {
       setSigners([{ id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200', receivesFinalCopy: true }]);
 
       if (res.data.isInitiatorFirst && res.data.redirectToken) {
-        // Path A: Redirect instantly to signing canvas
-        navigate(`/sign/${res.data.redirectToken}`);
+        // Path A: Redirect instantly to signing canvas (replace so back doesn't return to upload)
+        navigate(`/sign/${res.data.redirectToken}`, { replace: true });
       } else {
-        // Path B: Third party is first, reset dashboard
-        setCurrentStep(1);
+        // Path B: Third party is first, go to documents (replace so back doesn't return to upload)
         setFile(null);
         setDocumentId(null);
         setFields([]);
         setSigners([{ id: 1, name: '', email: '', role: 'Level 1 Signer', color: 'bg-blue-100 text-blue-700 border-blue-200', receivesFinalCopy: true }]);
         setSaveAsTemplate(false);
+        navigate('/documents', { replace: true });
       }
     } catch (error) {
       console.error(error);
@@ -1141,10 +1168,10 @@ export default function Upload() {
                 <div className="mt-8 flex justify-end">
                   <button
                     onClick={handleUseTemplateSubmit}
-                    disabled={isLoading || !selectedTemplateId}
+                    disabled={isUsingTemplate || !selectedTemplateId}
                     className="flex items-center h-[46px] px-8 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-all shadow-sm hover:shadow disabled:opacity-50 group"
                   >
-                    {isLoading ? (
+                    {isUsingTemplate ? (
                       <>
                         <Loader2 className="animate-spin h-4 w-4 mr-2" /> Loading template...
                       </>

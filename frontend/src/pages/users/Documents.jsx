@@ -1274,6 +1274,7 @@ export default function Documents() {
   const [itemToRename, setItemToRename] = useState(null);
   const [renameValue, setRenameValue] = useState('');
   const [itemToTrash, setItemToTrash] = useState(null);
+  const [isBulkTrashModalOpen, setIsBulkTrashModalOpen] = useState(false);
   const [folders, setFolders] = useState([]);
 
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
@@ -1307,6 +1308,52 @@ export default function Documents() {
     } catch (error) {
       console.error('Error moving to trash:', error);
       toast.error(error.response?.data?.error || 'Failed to move to Trash');
+    }
+  });
+
+  const handleBulkMove = () => {
+    const itemsToMove = Array.from(checkedIds).map(id => {
+      const doc = documents.find(d => d.id === id);
+      if (doc) return { id, type: 'document', name: doc.fileName };
+      const t = templates.find(t => t.id === id);
+      if (t) return { id, type: 'template', name: t.name || t.fileName };
+      const f = folders.find(f => f.id === id);
+      if (f) return { id, type: 'folder', name: f.name };
+      return null;
+    }).filter(Boolean);
+
+    if (itemsToMove.length === 0) return;
+    setSelectedItemsForMove(itemsToMove);
+    setIsMoveModalOpen(true);
+  };
+
+  const [handleConfirmBulkMoveToTrash, isBulkTrashing] = useAsyncLock(async () => {
+    if (checkedIds.size === 0) return;
+    const itemsToTrash = Array.from(checkedIds).map(id => {
+      const doc = documents.find(d => d.id === id);
+      if (doc) return { id, type: 'document' };
+      const t = templates.find(t => t.id === id);
+      if (t) return { id, type: 'template' };
+      const f = folders.find(f => f.id === id);
+      if (f) return { id, type: 'folder' };
+      return null;
+    }).filter(Boolean);
+
+    if (itemsToTrash.length === 0) return;
+
+    try {
+      await api.post('/api/trash/bulk-move', {
+        items: itemsToTrash
+      });
+      toast.success(`${itemsToTrash.length} item${itemsToTrash.length > 1 ? 's' : ''} moved to Trash`);
+      setIsBulkTrashModalOpen(false);
+      clearChecked();
+      fetchFolders();
+      fetchDocuments();
+      fetchTemplates();
+    } catch (error) {
+      console.error('Error moving items to trash:', error);
+      toast.error(error.response?.data?.error || 'Failed to move items to Trash');
     }
   });
 
@@ -1630,13 +1677,6 @@ export default function Documents() {
 
   const clearChecked = () => setCheckedIds(new Set());
 
-  const handleBulkComingSoon = () => toast('Bulk actions are coming soon.');
-
-  const checkedDocuments = useMemo(
-    () => documents.filter((d) => checkedIds.has(d.id)),
-    [documents, checkedIds]
-  );
-
   // Generate breadcrumbs
   const breadcrumbs = useMemo(() => {
     const crumbs = [];
@@ -1662,9 +1702,6 @@ export default function Documents() {
       return f.type === expectedType;
     });
   }, [folders, currentFolderId, activeTab]);
-
-  const canBulkDownload = checkedDocuments.length > 0 && checkedDocuments.every((d) => d.status === 'completed');
-  const canBulkRemind = checkedDocuments.length > 0 && checkedDocuments.every((d) => ['pending', 'in_progress'].includes(d.status));
 
   return (
     <div className="min-h-full bg-white">
@@ -1786,16 +1823,18 @@ export default function Documents() {
         {checkedIds.size > 0 && (
           <div className="flex items-center gap-4 bg-slate-900 text-white text-sm font-medium rounded-lg px-4 py-2.5 mb-4">
             <span>{checkedIds.size} selected</span>
-            {canBulkDownload && (
-              <button onClick={handleBulkComingSoon} className="text-white/80 hover:text-white transition-colors">
-                Download
-              </button>
-            )}
-            {canBulkRemind && (
-              <button onClick={handleBulkComingSoon} className="text-white/80 hover:text-white transition-colors">
-                Send reminder
-              </button>
-            )}
+            <button
+              onClick={handleBulkMove}
+              className="text-white/80 hover:text-white transition-colors flex items-center gap-1.5"
+            >
+              <Folder className="h-4 w-4" /> Move to...
+            </button>
+            <button
+              onClick={() => setIsBulkTrashModalOpen(true)}
+              className="text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1.5"
+            >
+              <Trash2 className="h-4 w-4" /> Move to Trash
+            </button>
             <button onClick={clearChecked} className="ml-auto text-white/60 hover:text-white transition-colors">
               Clear
             </button>
@@ -2074,6 +2113,35 @@ export default function Documents() {
                 >
                   {isTrashing && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
                   {isTrashing ? 'Moving...' : 'Move to Trash'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {isBulkTrashModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4 animate-in fade-in" onClick={() => !isBulkTrashing && setIsBulkTrashModalOpen(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">Move to Trash</h3>
+              <p className="text-sm text-slate-500 mb-6">
+                Are you sure you want to move <span className="font-semibold text-slate-700">{checkedIds.size} item{checkedIds.size > 1 ? 's' : ''}</span> to Trash? {checkedIds.size > 1 ? 'They' : 'It'} will be automatically deleted forever after 30 days.
+              </p>
+              <div className="flex justify-end gap-3">
+                <button 
+                  onClick={() => !isBulkTrashing && setIsBulkTrashModalOpen(false)}
+                  disabled={isBulkTrashing}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleConfirmBulkMoveToTrash}
+                  disabled={isBulkTrashing}
+                  className="flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-md transition-colors disabled:opacity-70"
+                >
+                  {isBulkTrashing && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
+                  {isBulkTrashing ? 'Moving...' : 'Move to Trash'}
                 </button>
               </div>
             </div>
